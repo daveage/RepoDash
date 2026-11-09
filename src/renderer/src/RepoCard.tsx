@@ -9,6 +9,8 @@ import { RepoActions } from './RepoActions'
 
 interface Props {
   path: string
+  /** Position in the grid; staggers the cards' entrance. */
+  index: number
   result: RepoResult | undefined
   meta: RepoMeta | undefined
   busy: boolean
@@ -25,7 +27,7 @@ interface Props {
 }
 
 export function RepoCard(props: Props) {
-  const { path, result, meta, busy, opBusy, lastOp, run, onOpen, onRefresh, onConfigure, overlay } = props
+  const { path, index, result, meta, busy, opBusy, lastOp, run, onOpen, onRefresh, onConfigure, overlay } = props
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: path
   })
@@ -34,13 +36,22 @@ export function RepoCard(props: Props) {
   const summary = result?.ok ? summarize(result.status) : result ? { label: 'error', tone: 'alert' as const } : null
   const style = {
     '--accent': meta?.color ?? defaultAccent(dirName),
+    '--i': index,
     transform: CSS.Translate.toString(transform),
     transition
   } as CSSProperties
   const classes = ['card', `tone-${summary?.tone ?? 'idle'}`, (busy || opBusy) && 'is-busy', isDragging && 'is-dragging']
 
   return (
-    <article ref={setNodeRef} className={classes.filter(Boolean).join(' ')} style={style}>
+    <article
+      ref={setNodeRef}
+      className={classes.filter(Boolean).join(' ')}
+      style={style}
+      tabIndex={0}
+      aria-label={name}
+    >
+      {/* Remounted when the status word changes, which replays its one-off glow. */}
+      {summary && <span key={summary.label} className="card-pulse" />}
       <span className="corner tl" />
       <span className="corner tr" />
       <span className="corner bl" />
@@ -83,7 +94,7 @@ function OpStatus({ entry, onOpen }: { entry: ConsoleEntry | undefined; onOpen()
   if (!entry) return <span className="card-op" />
   const text =
     entry.state === 'running'
-      ? `${entry.label}…`
+      ? `${entry.label}`
       : entry.state === 'ok'
         ? `${entry.label} · done`
         : `${entry.label} failed · ${entry.error?.split('\n')[0] ?? ''}`
@@ -95,6 +106,7 @@ function OpStatus({ entry, onOpen }: { entry: ConsoleEntry | undefined; onOpen()
       onClick={onOpen}
       title={entry.error ?? text}
     >
+      {entry.state === 'running' && <span className="radar" />}
       {text}
     </button>
   )

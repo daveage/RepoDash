@@ -18,6 +18,21 @@ const ABORT_ARGS: Record<string, string[]> = {
   bisect: ['bisect', 'reset']
 }
 
+// `core.editor=true` accepts the message git prepared; nobody could type into an editor opened here.
+const CONTINUE_ARGS: Record<string, string[]> = {
+  merge: ['-c', 'core.editor=true', 'commit', '--no-edit'],
+  rebase: ['-c', 'core.editor=true', 'rebase', '--continue'],
+  'cherry-pick': ['-c', 'core.editor=true', 'cherry-pick', '--continue'],
+  revert: ['-c', 'core.editor=true', 'revert', '--continue']
+}
+
+// --autostash: uncommitted changes are put aside for the rebase or merge and put back afterwards.
+const PULL_ARGS: Record<string, string[]> = {
+  'ff-only': ['pull', '--ff-only', '--progress'],
+  rebase: ['pull', '--rebase', '--autostash', '--progress'],
+  merge: ['pull', '--no-rebase', '--no-edit', '--autostash', '--progress']
+}
+
 function stashBefore(target: string): Command {
   return { args: ['stash', 'push', '--include-untracked', '-m', `RepoDash: before switching to ${target}`] }
 }
@@ -34,8 +49,11 @@ async function plan(path: string, op: Operation): Promise<Command[]> {
   switch (op.kind) {
     case 'fetch':
       return [{ args: ['fetch', '--all', '--prune', '--progress'] }]
-    case 'pull':
-      return [{ args: ['pull', '--ff-only', '--progress'] }]
+    case 'pull': {
+      const args = PULL_ARGS[op.mode ?? 'ff-only']
+      if (!args) throw new OperationError(`Unknown pull mode: ${op.mode}`)
+      return [{ args }]
+    }
     case 'push': {
       const refs = await readRefs(path)
       const current = refs.find((r) => r.current)
@@ -97,6 +115,11 @@ async function plan(path: string, op: Operation): Promise<Command[]> {
       if (!args) throw new OperationError(`Nothing to abort: ${op.operation}`)
       return [{ args }]
     }
+    case 'continue': {
+      const args = CONTINUE_ARGS[op.operation]
+      if (!args) throw new OperationError(`Cannot continue: ${op.operation}`)
+      return [{ args }]
+    }
     default:
       throw new OperationError('Unknown operation')
   }
@@ -106,16 +129,19 @@ function quote(arg: string): string {
   return /^[\w./:=@+-]+$/.test(arg) ? arg : `"${arg.replace(/"/g, '\\"')}"`
 }
 
-/** What git said went wrong: its error lines first, rejected refs next, otherwise its last words. */
+/**
+ * What git said went wrong: rejected refs first (they say why a push failed, unlike the generic
+ * "failed to push some refs"), then error lines, otherwise its last words — never its hints.
+ */
 function failureMessage(output: string): string {
   const lines = output
     .split(/\r?\n|\r/)
     .map((line) => line.trim())
     .filter((line) => line && !line.startsWith('$ '))
+  const rejected = lines.filter((line) => line.startsWith('! [') || line.includes('[rejected]'))
+  if (rejected.length) return rejected.slice(-3).join('\n')
   const errors = lines.filter((line) => /^(error|fatal):/i.test(line))
   if (errors.length) return errors.slice(-3).join('\n')
-  const rejected = lines.filter((line) => line.startsWith('!') || line.includes('[rejected]'))
-  if (rejected.length) return rejected.slice(-3).join('\n')
   return lines.filter((line) => !line.startsWith('hint:')).slice(-3).join('\n') || 'git failed'
 }
 

@@ -132,7 +132,8 @@ export type HistoryScope = 'all' | 'current'
 
 export type Operation =
   | { kind: 'fetch' }
-  | { kind: 'pull' }
+  /** ff-only by default; a diverged branch needs rebase or merge. */
+  | { kind: 'pull'; mode?: PullMode }
   | { kind: 'push' }
   /** `branch` is a local name or a remote one (`origin/x`), which gets a tracking branch. */
   | { kind: 'switch'; branch: string; stash: boolean }
@@ -143,6 +144,10 @@ export type Operation =
   | { kind: 'stash-push' }
   | { kind: 'stash-pop' }
   | { kind: 'abort'; operation: RepoOperation }
+  /** After conflicts are resolved and staged. */
+  | { kind: 'continue'; operation: RepoOperation }
+
+export type PullMode = 'ff-only' | 'rebase' | 'merge'
 
 export interface OpResult {
   ok: boolean

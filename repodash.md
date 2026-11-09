@@ -61,9 +61,10 @@ UI (<https://gmunk.com/Oblivion-GFX>).
   with `--literal-pathspecs` on `add`/`reset` only. Set globally (`GIT_LITERAL_PATHSPECS`) it silently breaks
   `stash --include-untracked`, which relies on the `:/` pathspec to remove untracked files.
 - Commit messages go through stdin (`commit -F -`). Push of a branch without upstream publishes it to
-  `origin` (or the only remote) with `--set-upstream`. Pull is `--ff-only`; a diverged branch fails with
-  git's explanation in the console.
-- A failure's summary is git's `fatal:`/`error:` lines, then rejected refs, never its `hint:` lines.
+  `origin` (or the only remote) with `--set-upstream`. Pull is `--ff-only`; a diverged branch asks first
+  (see below).
+- A failure's summary is git's rejected refs first (they say why a push failed), then its `fatal:`/`error:`
+  lines, never its `hint:` lines.
 
 ## History colours (`src/main/history.ts`)
 
@@ -73,8 +74,27 @@ owns only its own commits), then the current branch, then local branches, then r
 first. A local branch and its remote counterpart share one colour. Commits brought in by a merge whose
 branch was deleted get a lane named from the merge message (`Merge branch 'x'`, `Merge pull request #n
 from user/x`). The legend lists the lanes with commit counts; clicking one highlights its commits.
-Consecutive commits of the same lane are joined by a line — a preview, not a full graph: the lane/tree
-layout with merge lines is planned for phase 3.
+The graph (`src/renderer/src/graph.ts`) lays commits out in columns the way `git log --graph` does: each
+column waits for one commit; a commit takes the first column waiting for it, hands it to its first parent
+and opens or joins a column per further parent; columns waiting for the same commit converge on it.
+First-parent lines take the child's branch colour (a branch runs down to where it forked), merge lines the
+merged parent's colour. It is one SVG behind fixed-height rows; graphs wider than 16 columns are cut off.
+
+## Pulling a diverged branch
+
+`--ff-only` cannot combine local and remote commits, so Pull on a diverged branch asks: **Rebase**
+(`pull --rebase --autostash`) or **Merge** (`pull --no-rebase --no-edit --autostash`). A conflict leaves the
+rebase/merge in progress: the panel shows a banner with the conflict count, conflicts are marked resolved in
+Changes, then **Continue** (`rebase --continue` etc. with `core.editor=true`, which accepts git's message)
+or **Abort**.
+
+## Keyboard
+
+Arrows move between cards, Enter opens History, C / B / L open Changes / Branches / Console, F fetch,
+P pull, Shift+P push, R refresh (Shift+R all), `?` lists everything. In the panel 1–4 switch tabs; Esc
+leaves a text field first, then closes the panel. Space on a card header picks the card up for reordering
+(Enter does not, since it opens the card). Shortcuts click the same buttons, so they get the same checks
+and prompts.
 
 ## Card
 
@@ -99,8 +119,8 @@ Per card: colour, alias, group/tag, pin, order — persisted.
 - Palette: pale white/cyan line work on deep blue-grey; amber = behind/dirty, red = conflict/error.
   The user colour is an accent on the card edge, so the whole screen stays coherent.
 - Type: thin, wide, small caps with wide letter spacing (Rajdhani); mono (Share Tech Mono) for hashes.
-- Graphics: corner brackets, tick-mark rulers, segmented arcs for ahead/behind, radar sweep while
-  fetching, short boot sequence on start, faint grid background.
+- Graphics: corner brackets, tick-mark rulers, radar sweep while an operation runs, a glow when a
+  card's status changes, short start-up sequence (skipped with reduced motion), faint grid background.
 - Restraint: glow and motion only when something changes.
 
 ## Phases
@@ -110,7 +130,7 @@ Per card: colour, alias, group/tag, pin, order — persisted.
 | 0 | Spike: Electron + React skeleton; add a repository by folder picker or command line, show its status on a card, refresh | done |
 | 1 | Read-only dashboard: scan folders + single repos, cards, watcher refresh, drag reorder (by the card header, or keyboard: focus header, Space, arrows, Space), alias + colour, persistence, installer (electron-builder) | done |
 | 2 | Operations: fetch / pull / push / publish / switch + create branch (local and remote) / stage + commit (+ push) / stash + pop / abort merge-rebase; detail panel with history (branch colours + legend), changes, branches, console | done |
-| 3 | HUD polish: history tree layout (lanes, merge lines), animations, boot sequence, fetch radar, keyboard navigation; pull with rebase for diverged branches | |
+| 3 | History tree layout (lanes, merge lines); pull with rebase or merge for diverged branches, continue after conflicts; start-up sequence, staggered card entrance, status-change glow, radar while an operation runs; keyboard navigation and shortcut overlay | done |
 | 4 | Extras: bulk ops ("pull all clean"), diff viewer, tray icon with dirty badge, notifications | |
 
 ## Development

@@ -1,4 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 export interface Choice {
   label: string
@@ -10,10 +11,11 @@ interface Props {
   title: string
   children: ReactNode
   choices: Choice[]
+  cancelLabel?: string
   onCancel(): void
 }
 
-export function ConfirmDialog({ title, children, choices, onCancel }: Props) {
+export function ConfirmDialog({ title, children, choices, cancelLabel = 'Cancel', onCancel }: Props) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
@@ -25,14 +27,15 @@ export function ConfirmDialog({ title, children, choices, onCancel }: Props) {
     return () => window.removeEventListener('keydown', onKey, true)
   }, [onCancel])
 
-  return (
+  // Rendered into <body>, so a dialog opened from a card is not clipped or dragged along with it.
+  return createPortal(
     <div className="dialog-backdrop" onClick={onCancel}>
       <div className="dialog" role="dialog" aria-label={title} onClick={(event) => event.stopPropagation()}>
         <div className="dialog-title">{title}</div>
         <div className="dialog-body">{children}</div>
         <div className="dialog-actions">
-          <button className="hud-btn" onClick={onCancel}>
-            Cancel
+          <button className="hud-btn" onClick={onCancel} autoFocus={choices.length === 0}>
+            {cancelLabel}
           </button>
           {choices.map((choice, index) => (
             <button
@@ -46,6 +49,7 @@ export function ConfirmDialog({ title, children, choices, onCancel }: Props) {
           ))}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

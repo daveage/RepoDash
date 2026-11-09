@@ -5,22 +5,29 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  type DragEndEvent
+  type DragEndEvent,
+  type KeyboardCodes
 } from '@dnd-kit/core'
 import { arrayMove, rectSortingStrategy, SortableContext, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AddResult, Operation, RepoResult, Snapshot } from '../../shared/types'
+import { Boot, prefersReducedMotion } from './Boot'
 import { CardConfig } from './CardConfig'
 import { baseName, defaultAccent, isDirty, isOutOfSync, pad2 } from './format'
 import { useOperations } from './operations'
+import { actionForKey, clickAction, dialogOpen, hasModifier, isTypingTarget } from './keys'
 import { RepoCard } from './RepoCard'
 import { RepoDetail, type DetailTab } from './RepoDetail'
+import { Shortcuts } from './Shortcuts'
 import { SourcesPanel } from './SourcesPanel'
 
 const api = window.repodash
 
 /** A refresh faster than this never shows the busy scan line, so watcher refreshes do not flicker. */
 const BUSY_DELAY_MS = 250
+
+// Enter opens a card, so only Space picks one up for keyboard reordering.
+const DRAG_KEYS: KeyboardCodes = { start: ['Space'], cancel: ['Escape'], end: ['Space', 'Enter'] }
 
 export function App() {
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null)
@@ -30,7 +37,10 @@ export function App() {
   const [configuring, setConfiguring] = useState<string | null>(null)
   const [showSources, setShowSources] = useState(false)
   const [detail, setDetail] = useState<{ path: string; tab: DetailTab } | null>(null)
+  const [booting, setBooting] = useState(() => !prefersReducedMotion())
+  const [showHelp, setShowHelp] = useState(false)
   const operations = useOperations()
+  const dragging = useRef(false)
 
   // Callbacks read these so they never act on a stale render.
   const snapshotRef = useRef<Snapshot | null>(null)
@@ -128,11 +138,12 @@ export function App() {
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates, keyboardCodes: DRAG_KEYS })
   )
 
   const handleDragEnd = useCallback(
     ({ active, over }: DragEndEvent) => {
+      dragging.current = false
       const current = snapshotRef.current
       if (!current || !over || active.id === over.id) return
       const paths = current.repos.map((repo) => repo.path)
@@ -145,6 +156,49 @@ export function App() {
     [apply, applySnapshot]
   )
 
+  const endBoot = useCallback(() => setBooting(false), [])
+
+  // Grid keys; the panel and dialogs handle their own while open.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const current = snapshotRef.current
+      if (!current || detail || showSources || configuring || dragging.current || dialogOpen()) return
+      if (isTypingTarget(event.target) || hasModifier(event)) return
+      if (event.key === '?') return setShowHelp(true)
+      if (event.key === 'R') return refreshAll()
+
+      const cards = [...document.querySelectorAll<HTMLElement>('.grid .card')]
+      if (cards.length === 0) return
+      const index = cards.findIndex((card) => card.contains(document.activeElement))
+      const columns = cards.filter((card) => card.offsetTop === cards[0].offsetTop).length
+      const steps: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: columns, ArrowUp: -columns }
+      if (event.key in steps || event.key === 'Home' || event.key === 'End') {
+        event.preventDefault()
+        const target =
+          event.key === 'Home' ? 0 : event.key === 'End' ? cards.length - 1 : index < 0 ? 0 : index + steps[event.key]
+        cards[Math.max(0, Math.min(cards.length - 1, target))].focus()
+        return
+      }
+      if (index < 0) return
+      // Cards render in the snapshot's order.
+      const path = current.repos[index]?.path
+      if (!path) return
+      const tabs: Record<string, DetailTab> = { Enter: 'history', c: 'changes', b: 'branches', l: 'console' }
+      if (event.key in tabs) {
+        event.preventDefault()
+        return setDetail({ path, tab: tabs[event.key] })
+      }
+      if (event.key === 'r') return void refresh(path)
+      const action = actionForKey(event)
+      if (action) {
+        event.preventDefault()
+        clickAction(cards[index], action)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [detail, showSources, configuring, refresh, refreshAll])
+
   if (!snapshot) return <div className="app" />
 
   const paths = snapshot.repos.map((repo) => repo.path)
@@ -155,7 +209,8 @@ export function App() {
   const folderIds = new Set(snapshot.sources.filter((s) => s.kind === 'folder').map((s) => s.id))
 
   return (
-    <div className="app">
+    <div className={booting ? 'app' : 'app booted'}>
+      {booting && <Boot repoCount={snapshot.repos.length} scanning={snapshot.scanning} onDone={endBoot} />}
       <header className="hud-top">
         <div className="brand">
           <span className="brand-mark" />
@@ -180,6 +235,9 @@ export function App() {
           <button className="hud-btn" onClick={refreshAll} disabled={paths.length === 0}>
             Refresh
           </button>
+          <button className="hud-btn" onClick={() => setShowHelp(true)} title="Keyboard shortcuts">
+            ?
+          </button>
         </div>
       </header>
 
@@ -203,13 +261,20 @@ export function App() {
           </div>
         </div>
       ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragStart={() => (dragging.current = true)}
+          onDragCancel={() => (dragging.current = false)}
+          onDragEnd={handleDragEnd}
+        >
           <SortableContext items={paths} strategy={rectSortingStrategy}>
             <main className="grid">
-              {snapshot.repos.map(({ path, sourceId }) => (
+              {snapshot.repos.map(({ path, sourceId }, index) => (
                 <RepoCard
                   key={path}
                   path={path}
+                  index={index}
                   result={results[path]}
                   meta={snapshot.meta[path]}
                   busy={busy.has(path)}
@@ -260,6 +325,8 @@ export function App() {
           onClose={closeDetail}
         />
       )}
+
+      {showHelp && <Shortcuts onClose={() => setShowHelp(false)} />}
 
       {showSources && (
         <SourcesPanel

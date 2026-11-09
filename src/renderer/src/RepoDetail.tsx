@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type CSSProperties } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import type { BranchInfo, History, HistoryScope, Operation, RepoDetails, RepoStatus } from '../../shared/types'
 import { BranchesView } from './BranchesView'
 import { ChangesView } from './ChangesView'
@@ -6,10 +6,12 @@ import { ConfirmDialog, type Choice } from './ConfirmDialog'
 import { ConsoleView } from './ConsoleView'
 import { isDirty, summarize } from './format'
 import { HistoryView } from './HistoryView'
+import { actionForKey, clickAction, dialogOpen, hasModifier, isTypingTarget } from './keys'
 import type { ConsoleEntry } from './operations'
 import { RepoActions } from './RepoActions'
 
 export type DetailTab = 'history' | 'changes' | 'branches' | 'console'
+const TABS: DetailTab[] = ['history', 'changes', 'branches', 'console']
 
 interface Props {
   path: string
@@ -66,11 +68,32 @@ export function RepoDetail(props: Props) {
     }
   }, [path, scope, limit, stamp])
 
+  const panelRef = useRef<HTMLElement>(null)
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => event.key === 'Escape' && onClose()
+    const onKey = (event: KeyboardEvent) => {
+      if (dialogOpen()) return
+      // Escape in a field only leaves the field, so a half-written commit message is not lost.
+      if (event.key === 'Escape') {
+        if (isTypingTarget(event.target)) (event.target as HTMLElement).blur()
+        else onClose()
+        return
+      }
+      if (isTypingTarget(event.target) || hasModifier(event)) return
+      const tabIndex = ['1', '2', '3', '4'].indexOf(event.key)
+      if (tabIndex >= 0) {
+        event.preventDefault()
+        onTab(TABS[tabIndex])
+        return
+      }
+      const action = actionForKey(event)
+      if (action) {
+        event.preventDefault()
+        clickAction(panelRef.current?.querySelector('.detail-actions') ?? null, action)
+      }
+    }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, onTab])
 
   const dirty = status ? isDirty(status) : false
   const closePrompt = useCallback(() => setPrompt(null), [])
@@ -120,6 +143,7 @@ export function RepoDetail(props: Props) {
   return (
     <div className="drawer-backdrop" onClick={onClose}>
       <aside
+        ref={panelRef}
         className="drawer detail"
         style={{ '--accent': accent } as CSSProperties}
         onClick={(event) => event.stopPropagation()}
@@ -162,16 +186,38 @@ export function RepoDetail(props: Props) {
 
         {status?.operation && (
           <div className="detail-banner">
-            <span>{status.operation} in progress</span>
-            <button className="hud-btn small danger" disabled={busy} onClick={abort}>
-              Abort {status.operation}
-            </button>
+            <span>
+              {status.operation} in progress
+              {status.operation !== 'bisect' && (
+                <span className="banner-hint">
+                  {status.conflicted > 0
+                    ? ` · ${status.conflicted} conflict${status.conflicted === 1 ? '' : 's'}: resolve, mark resolved in Changes, then continue`
+                    : ' · no conflicts left'}
+                </span>
+              )}
+            </span>
+            <span className="banner-actions">
+              {status.operation !== 'bisect' && (
+                <button
+                  className="hud-btn small primary"
+                  disabled={busy || status.conflicted > 0}
+                  onClick={() =>
+                    run({ kind: 'continue', operation: status.operation! }, `Continue ${status.operation}`)
+                  }
+                >
+                  Continue
+                </button>
+              )}
+              <button className="hud-btn small danger" disabled={busy} onClick={abort}>
+                Abort {status.operation}
+              </button>
+            </span>
           </div>
         )}
         {loadError && <div className="notice">{loadError}</div>}
 
         <nav className="tabs">
-          {(['history', 'changes', 'branches', 'console'] as const).map((t) => (
+          {TABS.map((t) => (
             <button key={t} className={`tab${tab === t ? ' active' : ''}`} onClick={() => onTab(t)}>
               {t}
               {t === 'changes' && changeCount > 0 && <span className="tab-count">{changeCount}</span>}

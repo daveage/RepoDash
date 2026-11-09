@@ -1,6 +1,7 @@
-import { useState, type CSSProperties } from 'react'
+import { useMemo, useState, type CSSProperties } from 'react'
 import type { History, HistoryScope } from '../../shared/types'
 import { laneColor, relativeTime } from './format'
+import { layoutGraph } from './graph'
 
 interface Props {
   history: History | null
@@ -9,16 +10,29 @@ interface Props {
   onMore(): void
 }
 
+/** Must match `.commit` height in detail.css: the graph is one SVG behind rows of this height. */
+const ROW_H = 28
+const COL_W = 14
+const PAD = 10
+/** Wider graphs (dozens of parallel branches) are cut off rather than squeezing the subjects out. */
+const MAX_GRAPH_COLUMNS = 16
+
 const lane = (index: number) => ({ '--lane': laneColor(index) }) as CSSProperties
+const x = (column: number) => PAD + column * COL_W
+const y = (row: number) => row * ROW_H + ROW_H / 2
 
 export function HistoryView({ history, scope, onScope, onMore }: Props) {
   // Clicking a legend entry picks out that branch's commits.
   const [focus, setFocus] = useState<number | null>(null)
-  if (!history) return <div className="pane-empty">Reading history…</div>
+  const graph = useMemo(() => (history ? layoutGraph(history.commits) : null), [history])
+  if (!history || !graph) return <div className="pane-empty">Reading history…</div>
   if (history.commits.length === 0) return <div className="pane-empty">No commits yet</div>
 
   const unclaimed = history.commits.filter((c) => c.lane < 0).length
   const toggle = (index: number) => setFocus((current) => (current === index ? null : index))
+  const dimmed = (laneIndex: number) => focus !== null && laneIndex !== focus
+  const graphWidth = x(Math.min(graph.columns, MAX_GRAPH_COLUMNS) - 1) + PAD
+  const headHash = history.commits.find((c) => c.refs.some((r) => r.kind === 'head'))?.hash
 
   return (
     <div className="history-pane">
@@ -38,7 +52,7 @@ export function HistoryView({ history, scope, onScope, onMore }: Props) {
         {history.lanes.map((l, index) => (
           <button
             key={l.name}
-            className={`legend-chip kind-${l.kind}${focus === index ? ' active' : ''}${focus !== null && focus !== index ? ' dim' : ''}`}
+            className={`legend-chip kind-${l.kind}${focus === index ? ' active' : ''}${dimmed(index) ? ' dim' : ''}`}
             style={lane(index)}
             onClick={() => toggle(index)}
             title={`${l.count} commits${l.kind === 'merged' ? ' · branch merged and deleted' : l.kind === 'remote' ? ' · remote only' : ''}`}
@@ -58,16 +72,47 @@ export function HistoryView({ history, scope, onScope, onMore }: Props) {
         )}
       </div>
 
-      <ol className="history">
-        {history.commits.map((commit, index) => {
-          const next = history.commits[index + 1]
-          const continues = next !== undefined && next.lane === commit.lane && commit.parents[0] === next.hash
-          const classes = ['commit', focus !== null && commit.lane !== focus && 'dim', continues && 'continues']
-          return (
-            <li key={commit.hash} className={classes.filter(Boolean).join(' ')} style={lane(commit.lane)}>
-              <span className="lane-mark">
-                <span className={commit.parents.length > 1 ? 'lane-dot merge' : 'lane-dot'} />
-              </span>
+      <div className="history" style={{ '--graph-w': `${graphWidth}px` } as CSSProperties}>
+        <svg className="graph" width={graphWidth} height={history.commits.length * ROW_H} aria-hidden="true">
+          {graph.segments.map((s, index) => {
+            const x1 = x(s.from)
+            const x2 = x(s.to)
+            const y1 = y(s.row)
+            const y2 = y(s.row + 1)
+            const d = x1 === x2 ? `M${x1} ${y1}V${y2}` : `M${x1} ${y1}C${x1} ${y1 + ROW_H / 2} ${x2} ${y1 + ROW_H / 2} ${x2} ${y2}`
+            return (
+              <path
+                key={index}
+                d={d}
+                stroke={laneColor(s.lane)}
+                className={dimmed(s.lane) ? 'edge dim' : 'edge'}
+              />
+            )
+          })}
+          {history.commits.map((commit, row) => {
+            const cx = x(graph.nodeColumn[row])
+            const color = laneColor(commit.lane)
+            const merge = commit.parents.length > 1
+            return (
+              <g key={commit.hash} className={dimmed(commit.lane) ? 'node dim' : 'node'}>
+                {commit.hash === headHash && <circle cx={cx} cy={y(row)} r={8} fill="none" stroke={color} className="head-ring" />}
+                <circle
+                  cx={cx}
+                  cy={y(row)}
+                  r={merge ? 4.5 : 4}
+                  fill={merge ? 'var(--bg)' : color}
+                  stroke={color}
+                  strokeWidth={merge ? 2 : 0}
+                />
+              </g>
+            )
+          })}
+        </svg>
+
+        <ol className="history-rows">
+          {history.commits.map((commit) => (
+            <li key={commit.hash} className={dimmed(commit.lane) ? 'commit dim' : 'commit'} style={lane(commit.lane)}>
+              <span className="graph-space" />
               <span className="commit-hash">{commit.hash.slice(0, 7)}</span>
               <span className="commit-main">
                 {commit.refs.map((ref) => (
@@ -84,9 +129,9 @@ export function HistoryView({ history, scope, onScope, onMore }: Props) {
                 {relativeTime(commit.time)}
               </span>
             </li>
-          )
-        })}
-      </ol>
+          ))}
+        </ol>
+      </div>
 
       {history.truncated && (
         <button className="hud-btn small more" onClick={onMore}>

@@ -154,6 +154,17 @@
   text-transform: uppercase;
 }
 
+.banner-hint {
+  color: var(--dim);
+  letter-spacing: 0.08em;
+  text-transform: none;
+}
+
+.banner-actions {
+  display: flex;
+  gap: 6px;
+}
+
 .tabs {
   display: flex;
   gap: 2px;
@@ -326,7 +337,39 @@
   font-size: 10px;
 }
 
+/* The graph is one SVG under the rows; rows have a fixed height so nodes line up with them. */
 .history {
+  position: relative;
+}
+
+.graph {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.graph .edge {
+  fill: none;
+  stroke-width: 2;
+  stroke-linecap: round;
+  transition: opacity 0.15s;
+}
+
+.graph .node {
+  transition: opacity 0.15s;
+}
+
+.graph .head-ring {
+  stroke-width: 1.5;
+  opacity: 0.8;
+}
+
+.graph .dim {
+  opacity: 0.15;
+}
+
+.history-rows {
   margin: 0;
   padding: 0;
   list-style: none;
@@ -334,10 +377,10 @@
 
 .commit {
   display: grid;
-  grid-template-columns: 22px 64px minmax(0, 1fr) minmax(0, 150px) 40px;
+  grid-template-columns: var(--graph-w) 64px minmax(0, 1fr) minmax(0, 150px) 40px;
   align-items: center;
   gap: 10px;
-  min-height: 28px;
+  height: 28px;
   font-size: 14px;
   transition: opacity 0.15s;
 }
@@ -348,42 +391,6 @@
 
 .commit.dim {
   opacity: 0.22;
-}
-
-.lane-mark {
-  position: relative;
-  align-self: stretch;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* A line down to the next commit while it continues the same branch. */
-.commit.continues .lane-mark::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  bottom: -50%;
-  left: calc(50% - 1px);
-  width: 2px;
-  background: color-mix(in srgb, var(--lane) 55%, transparent);
-}
-
-.lane-dot {
-  position: relative;
-  z-index: 1;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--lane);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--lane) 50%, transparent);
-}
-
-.lane-dot.merge {
-  width: 11px;
-  height: 11px;
-  background: var(--bg);
-  border: 2px solid var(--lane);
 }
 
 .commit-hash {
@@ -745,7 +752,7 @@
 /* ---------- dialog ---------- */
 
 .dialog-backdrop {
-  position: absolute;
+  position: fixed;
   inset: 0;
   z-index: 30;
   display: flex;
