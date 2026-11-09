@@ -1,8 +1,10 @@
 import { app, BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import type { AddResult, RepoMeta, Snapshot } from '../shared/types'
-import { readRepoStatus, resolveRepoRoot } from './git'
+import type { AddResult, Operation, RepoDetails, RepoMeta, Snapshot } from '../shared/types'
+import { readChanges, readRepoStatus, resolveRepoRoot } from './git'
+import { readHistory, readRefs, toBranches } from './history'
+import { cancelOperation, runOperation } from './ops'
 import { State } from './state'
 import { RepoWatcher } from './watch'
 
@@ -130,6 +132,33 @@ function registerIpc(): void {
     state.setOrder(paths)
     return state.snapshot()
   })
+
+  ipcMain.handle('repo:details', async (_event, path: unknown): Promise<RepoDetails> => {
+    const repo = expectString(path, 'path')
+    const [refs, files] = await Promise.all([readRefs(repo), readChanges(repo)])
+    return { branches: toBranches(refs), files }
+  })
+
+  ipcMain.handle('repo:history', (_event, path: unknown, scope: unknown, limit: unknown) => {
+    const count = typeof limit === 'number' ? Math.max(1, Math.min(5000, Math.round(limit))) : 300
+    return readHistory(expectString(path, 'path'), scope === 'current' ? 'current' : 'all', count)
+  })
+
+  ipcMain.handle('op:run', async (event, path: unknown, op: unknown, opId: unknown) => {
+    const repo = expectString(path, 'path')
+    const id = expectString(opId, 'opId')
+    if (typeof op !== 'object' || op === null || typeof (op as Operation).kind !== 'string') {
+      throw new Error('op must be an operation')
+    }
+    const result = await runOperation(repo, op as Operation, id, (text) => {
+      if (!event.sender.isDestroyed()) event.sender.send('op:output', { opId: id, text })
+    })
+    // The watcher sees most changes, but not e.g. a failed push; the card should show the outcome now.
+    broadcast('repo:changed', repo)
+    return result
+  })
+
+  ipcMain.handle('op:cancel', (_event, opId: unknown) => cancelOperation(expectString(opId, 'opId')))
 
   ipcMain.handle('repo:set-meta', (_event, path: unknown, meta: unknown) => {
     const { alias, color } = (meta ?? {}) as RepoMeta

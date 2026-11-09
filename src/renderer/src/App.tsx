@@ -9,10 +9,12 @@ import {
 } from '@dnd-kit/core'
 import { arrayMove, rectSortingStrategy, SortableContext, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AddResult, RepoResult, Snapshot } from '../../shared/types'
+import type { AddResult, Operation, RepoResult, Snapshot } from '../../shared/types'
 import { CardConfig } from './CardConfig'
-import { isDirty, isOutOfSync, pad2 } from './format'
+import { baseName, defaultAccent, isDirty, isOutOfSync, pad2 } from './format'
+import { useOperations } from './operations'
 import { RepoCard } from './RepoCard'
+import { RepoDetail, type DetailTab } from './RepoDetail'
 import { SourcesPanel } from './SourcesPanel'
 
 const api = window.repodash
@@ -27,6 +29,8 @@ export function App() {
   const [notice, setNotice] = useState<string | null>(null)
   const [configuring, setConfiguring] = useState<string | null>(null)
   const [showSources, setShowSources] = useState(false)
+  const [detail, setDetail] = useState<{ path: string; tab: DetailTab } | null>(null)
+  const operations = useOperations()
 
   // Callbacks read these so they never act on a stale render.
   const snapshotRef = useRef<Snapshot | null>(null)
@@ -109,6 +113,18 @@ export function App() {
   const addFolder = useCallback(() => handleAdd(api.addScanFolder), [handleAdd])
   const closeConfig = useCallback(() => setConfiguring(null), [])
   const closeSources = useCallback(() => setShowSources(false), [])
+  const closeDetail = useCallback(() => setDetail(null), [])
+
+  const { run: runOperation } = operations
+  const run = useCallback(
+    async (path: string, op: Operation, label: string) => {
+      const result = await runOperation(path, op, label)
+      // Failures are explained in the console; take the user there when the panel is open.
+      if (!result.ok) setDetail((current) => (current?.path === path ? { ...current, tab: 'console' } : current))
+      return result.ok
+    },
+    [runOperation]
+  )
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -197,6 +213,10 @@ export function App() {
                   result={results[path]}
                   meta={snapshot.meta[path]}
                   busy={busy.has(path)}
+                  opBusy={operations.isRunning(path)}
+                  lastOp={operations.entries.findLast((entry) => entry.path === path)}
+                  run={(op, label) => run(path, op, label)}
+                  onOpen={(tab) => setDetail({ path, tab })}
                   onRefresh={() => refresh(path)}
                   onConfigure={() => setConfiguring(path)}
                   overlay={
@@ -219,6 +239,26 @@ export function App() {
             </main>
           </SortableContext>
         </DndContext>
+      )}
+
+      {detail && snapshot.repos.some((repo) => repo.path === detail.path) && (
+        <RepoDetail
+          key={detail.path}
+          path={detail.path}
+          name={snapshot.meta[detail.path]?.alias ?? baseName(detail.path)}
+          accent={snapshot.meta[detail.path]?.color ?? defaultAccent(baseName(detail.path))}
+          status={(() => {
+            const result = results[detail.path]
+            return result?.ok ? result.status : undefined
+          })()}
+          tab={detail.tab}
+          entries={operations.entries.filter((entry) => entry.path === detail.path)}
+          busy={operations.isRunning(detail.path)}
+          onTab={(tab) => setDetail({ path: detail.path, tab })}
+          run={(op, label) => run(detail.path, op, label)}
+          onCancel={operations.cancel}
+          onClose={closeDetail}
+        />
       )}
 
       {showSources && (

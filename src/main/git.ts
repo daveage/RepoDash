@@ -1,7 +1,7 @@
-import { execFile } from 'node:child_process'
+import { execFile, spawn, type ChildProcess } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { basename, join, resolve as resolvePath } from 'node:path'
-import type { LastCommit, RepoOperation, RepoResult, RepoStatus } from '../shared/types'
+import type { FileChange, LastCommit, RepoOperation, RepoResult, RepoStatus } from '../shared/types'
 
 const GIT_ENV = {
   ...process.env,
@@ -46,6 +46,76 @@ export function runGit(cwd: string, args: string[]): Promise<string> {
         )
       })
   )
+}
+
+/** Environment for commands that change the repository; unlike status, these must take locks. */
+const OPERATION_ENV: NodeJS.ProcessEnv = {
+  ...process.env,
+  GIT_TERMINAL_PROMPT: '0',
+  GIT_MERGE_AUTOEDIT: 'no'
+}
+
+export interface StreamingGit {
+  child: ChildProcess
+  /** Exit code; null when the process was killed. */
+  done: Promise<number | null>
+}
+
+/** Runs git and passes its output, stdout and stderr interleaved, to `onText` as it arrives. */
+export function runGitStreaming(
+  cwd: string,
+  args: string[],
+  onText: (text: string) => void,
+  input?: string
+): StreamingGit {
+  const child = spawn('git', ['-c', 'core.quotepath=false', '-c', 'color.ui=false', ...args], {
+    cwd,
+    env: OPERATION_ENV,
+    windowsHide: true
+  })
+  child.stdout.setEncoding('utf8').on('data', onText)
+  child.stderr.setEncoding('utf8').on('data', onText)
+  child.stdin.on('error', () => {})
+  child.stdin.end(input ?? '')
+  const done = new Promise<number | null>((resolve) => {
+    child.on('error', (error) => {
+      onText(`${error.message}\n`)
+      resolve(-1)
+    })
+    child.on('close', (code) => resolve(code))
+  })
+  return { child, done }
+}
+
+/** Parses the file records of `git status --porcelain=v2 -z`. */
+export function parseChanges(out: string): FileChange[] {
+  const files: FileChange[] = []
+  const records = out.split('\0')
+  for (let i = 0; i < records.length; i++) {
+    const record = records[i]
+    const fields = record.split(' ')
+    if (record.startsWith('1 ')) {
+      files.push({ path: fields.slice(8).join(' '), index: record[2], worktree: record[3], kind: 'changed' })
+    } else if (record.startsWith('2 ')) {
+      // The original path follows as its own record.
+      files.push({
+        path: fields.slice(9).join(' '),
+        origPath: records[++i],
+        index: record[2],
+        worktree: record[3],
+        kind: 'renamed'
+      })
+    } else if (record.startsWith('u ')) {
+      files.push({ path: fields.slice(10).join(' '), index: record[2], worktree: record[3], kind: 'conflict' })
+    } else if (record.startsWith('? ')) {
+      files.push({ path: record.slice(2), index: '?', worktree: '?', kind: 'untracked' })
+    }
+  }
+  return files
+}
+
+export async function readChanges(path: string): Promise<FileChange[]> {
+  return parseChanges(await runGit(path, ['status', '--porcelain=v2', '-z']))
 }
 
 /**

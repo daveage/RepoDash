@@ -156,6 +156,7 @@ button {
 }
 
 .hud-btn {
+  white-space: nowrap;
   padding: 9px 16px;
   background: transparent;
   border: 1px solid var(--line-strong);
@@ -435,7 +436,6 @@ button {
   border-top: 1px solid var(--line);
   font-size: 14px;
   min-width: 0;
-  padding-right: 64px;
 }
 
 .card-commit .hash {
@@ -464,7 +464,6 @@ button {
   font-family: var(--mono);
   font-size: 12px;
   line-height: 1.5;
-  padding-right: 64px;
 }
 
 .card-error {
@@ -477,11 +476,10 @@ button {
 }
 
 .card-actions {
-  position: absolute;
-  right: 12px;
-  bottom: 10px;
   display: flex;
+  align-items: center;
   gap: 4px;
+  margin-top: auto;
 }
 
 .icon-btn {

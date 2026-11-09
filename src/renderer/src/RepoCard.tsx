@@ -1,21 +1,31 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { CSSProperties, ReactNode } from 'react'
-import type { RepoMeta, RepoResult, RepoStatus } from '../../shared/types'
+import type { Operation, RepoMeta, RepoResult, RepoStatus } from '../../shared/types'
 import { baseName, defaultAccent, pad2, relativeTime, summarize } from './format'
+import type { ConsoleEntry } from './operations'
+import type { DetailTab } from './RepoDetail'
+import { RepoActions } from './RepoActions'
 
 interface Props {
   path: string
   result: RepoResult | undefined
   meta: RepoMeta | undefined
   busy: boolean
+  /** An operation is running in this repository. */
+  opBusy: boolean
+  /** The latest operation in this repository, shown in the footer. */
+  lastOp: ConsoleEntry | undefined
+  run(op: Operation, label: string): unknown
+  onOpen(tab: DetailTab): void
   onRefresh(): void
   onConfigure(): void
   /** Rendered over the card while it is being configured. */
   overlay?: ReactNode
 }
 
-export function RepoCard({ path, result, meta, busy, onRefresh, onConfigure, overlay }: Props) {
+export function RepoCard(props: Props) {
+  const { path, result, meta, busy, opBusy, lastOp, run, onOpen, onRefresh, onConfigure, overlay } = props
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: path
   })
@@ -27,7 +37,7 @@ export function RepoCard({ path, result, meta, busy, onRefresh, onConfigure, ove
     transform: CSS.Translate.toString(transform),
     transition
   } as CSSProperties
-  const classes = ['card', `tone-${summary?.tone ?? 'idle'}`, busy && 'is-busy', isDragging && 'is-dragging']
+  const classes = ['card', `tone-${summary?.tone ?? 'idle'}`, (busy || opBusy) && 'is-busy', isDragging && 'is-dragging']
 
   return (
     <article ref={setNodeRef} className={classes.filter(Boolean).join(' ')} style={style}>
@@ -49,11 +59,13 @@ export function RepoCard({ path, result, meta, busy, onRefresh, onConfigure, ove
 
       <div className="ruler" />
 
-      {result?.ok && <StatusBody status={result.status} />}
+      {result?.ok && <StatusBody status={result.status} onOpen={onOpen} />}
       {result && !result.ok && <div className="card-error">{result.error}</div>}
       {!result && <div className="card-pending">Acquiring signal…</div>}
 
       <div className="card-actions">
+        <RepoActions status={result?.ok ? result.status : undefined} busy={opBusy} run={run} />
+        <OpStatus entry={lastOp} onOpen={() => onOpen('console')} />
         <button className="icon-btn" onClick={onRefresh} disabled={busy} title="Refresh">
           ↻
         </button>
@@ -67,16 +79,37 @@ export function RepoCard({ path, result, meta, busy, onRefresh, onConfigure, ove
   )
 }
 
-function StatusBody({ status: s }: { status: RepoStatus }) {
+function OpStatus({ entry, onOpen }: { entry: ConsoleEntry | undefined; onOpen(): void }) {
+  if (!entry) return <span className="card-op" />
+  const text =
+    entry.state === 'running'
+      ? `${entry.label}…`
+      : entry.state === 'ok'
+        ? `${entry.label} · done`
+        : `${entry.label} failed · ${entry.error?.split('\n')[0] ?? ''}`
+  return (
+    // Keyed by state so a finished operation's fade-out starts over each time.
+    <button
+      key={`${entry.id}:${entry.state}`}
+      className={`card-op state-${entry.state}`}
+      onClick={onOpen}
+      title={entry.error ?? text}
+    >
+      {text}
+    </button>
+  )
+}
+
+function StatusBody({ status: s, onOpen }: { status: RepoStatus; onOpen(tab: DetailTab): void }) {
   return (
     <>
-      <div className="card-branch">
+      <div className="card-branch clickable" onClick={() => onOpen('branches')} title="Branches">
         <BranchIcon />
         <span className="branch">{s.branch ?? `detached @ ${s.head ?? '—'}`}</span>
         {s.upstream ? <span className="upstream">⟶ {s.upstream}</span> : <span className="upstream">no upstream</span>}
       </div>
 
-      <dl className="metrics">
+      <dl className="metrics clickable" onClick={() => onOpen('changes')} title="Changes">
         <Metric label="Ahead" value={s.ahead} prefix="▲" />
         <Metric label="Behind" value={s.behind} prefix="▼" warn />
         <Metric label="Stash" value={s.stash} />
@@ -89,7 +122,7 @@ function StatusBody({ status: s }: { status: RepoStatus }) {
         )}
       </dl>
 
-      <footer className="card-commit">
+      <footer className="card-commit clickable" onClick={() => onOpen('history')} title="History">
         {s.lastCommit ? (
           <>
             <span className="hash">{s.lastCommit.hash}</span>

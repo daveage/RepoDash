@@ -22,7 +22,13 @@ const api: RepoDashApi = {
   removeRepo: (path) => ipcRenderer.invoke('repo:remove', path),
   restoreRepo: (path) => ipcRenderer.invoke('repo:restore', path),
   setOrder: (paths) => ipcRenderer.invoke('repo:set-order', paths),
-  setMeta: (path, meta) => ipcRenderer.invoke('repo:set-meta', path, meta)
+  setMeta: (path, meta) => ipcRenderer.invoke('repo:set-meta', path, meta),
+
+  getDetails: (path) => ipcRenderer.invoke('repo:details', path),
+  getHistory: (path, scope, limit) => ipcRenderer.invoke('repo:history', path, scope, limit),
+  runOperation: (path, op, opId) => ipcRenderer.invoke('op:run', path, op, opId),
+  cancelOperation: (opId) => ipcRenderer.invoke('op:cancel', opId),
+  onOpOutput: (listener) => subscribe('op:output', listener)
 }
 
 contextBridge.exposeInMainWorld('repodash', api)

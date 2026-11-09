@@ -52,6 +52,14 @@ export const ACCENTS = [
   '#e8eef0'
 ]
 
+/** Branch colours in the history; ordered so neighbours differ strongly. Lane 0 is usually main. */
+const LANE_COLORS = ['#8fe6f2', '#f2b45c', '#b8a6ff', '#7cf2b0', '#ff8fb1', '#6fa8ff', '#c6f26b', '#ff7a59', '#4fd1c5', '#e8eef0']
+const NO_LANE_COLOR = '#56676d'
+
+export function laneColor(lane: number): string {
+  return lane < 0 ? NO_LANE_COLOR : LANE_COLORS[lane % LANE_COLORS.length]
+}
+
 /** A repository without a chosen colour gets a stable one from its name. */
 export function defaultAccent(name: string): string {
   let hash = 0
