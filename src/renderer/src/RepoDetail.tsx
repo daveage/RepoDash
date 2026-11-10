@@ -1,7 +1,15 @@
-import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
-import type { BranchInfo, History, HistoryScope, Operation, RepoDetails, RepoStatus } from '../../shared/types'
+import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
+import type {
+  BranchInfo,
+  History,
+  HistoryCommit,
+  HistoryScope,
+  Operation,
+  RepoDetails,
+  RepoStatus
+} from '../../shared/types'
 import { BranchesView } from './BranchesView'
-import { ChangesView } from './ChangesView'
+import { ChangesView, type DiscardKind } from './ChangesView'
 import { ConfirmDialog, type Choice } from './ConfirmDialog'
 import { ConsoleView } from './ConsoleView'
 import { isDirty, summarize } from './format'
@@ -31,9 +39,13 @@ const HISTORY_PAGE = 300
 
 interface Prompt {
   title: string
-  body: string
+  body: ReactNode
   choices: Choice[]
 }
+
+const TRASH = navigator.userAgent.includes('Windows') ? 'Recycle Bin' : 'Trash'
+/** A confirmation lists this many files, then "and n more". */
+const LISTED_FILES = 8
 
 export function RepoDetail(props: Props) {
   const { path, name, accent, status, tab, entries, busy, onTab, run, onCancel, onClose } = props
@@ -136,6 +148,56 @@ export function RepoDetail(props: Props) {
     })
   }
 
+  /** Throwing changes away cannot be undone (except untracked files, which go to the trash): ask first. */
+  const discard = (kind: DiscardKind, paths: string[]) => {
+    const what = describe(paths)
+    const body = {
+      unstaged: `Throws away the unstaged changes in ${what}; staged changes stay. This cannot be undone.`,
+      staged: `Throws away every change in ${what}, staged and unstaged, back to the last commit. This cannot be undone.`,
+      untracked: `Moves ${what} to the ${TRASH}.`
+    }[kind]
+    const label = kind === 'untracked' ? `Move to ${TRASH}` : 'Discard'
+    const op: Operation = kind === 'untracked' ? { kind: 'trash', paths } : { kind: 'discard', paths, staged: kind === 'staged' }
+    setPrompt({
+      title: kind === 'untracked' ? 'Remove new files' : 'Discard changes',
+      body: (
+        <>
+          {body}
+          {paths.length > 1 && (
+            <ul className="dialog-files">
+              {paths.slice(0, LISTED_FILES).map((p) => (
+                <li key={p}>{p}</li>
+              ))}
+              {paths.length > LISTED_FILES && <li>and {paths.length - LISTED_FILES} more</li>}
+            </ul>
+          )}
+        </>
+      ),
+      choices: [{ label, tone: 'danger', onChoose: () => (setPrompt(null), void run(op, `${label}: ${what}`)) }]
+    })
+  }
+
+  const revert = (commit: HistoryCommit) => {
+    const short = commit.hash.slice(0, 7)
+    setPrompt({
+      title: `Revert ${short}`,
+      body: (
+        <>
+          Makes a new commit on {status?.branch ?? 'the detached HEAD'} that undoes “{commit.subject}”
+          {commit.parents.length > 1 && ' — the changes this merge brought in, against its first parent'}. History
+          stays as it is. If it conflicts with later changes, resolve them and continue, or abort.
+        </>
+      ),
+      choices: [
+        {
+          label: 'Revert',
+          tone: 'primary',
+          onChoose: () => (setPrompt(null), void run({ kind: 'revert', hash: commit.hash }, `Revert ${short}`))
+        }
+      ]
+    })
+  }
+
   const files = details?.files ?? null
   const changeCount = files?.length ?? 0
   const summary = status ? summarize(status) : null
@@ -232,6 +294,8 @@ export function RepoDetail(props: Props) {
               path={path}
               history={history}
               scope={scope}
+              canRevert={!busy && !!status && !status.operation}
+              onRevert={revert}
               onScope={(next) => (setScope(next), setLimit(HISTORY_PAGE))}
               onMore={() => setLimit((current) => current + HISTORY_PAGE)}
             />
@@ -245,6 +309,7 @@ export function RepoDetail(props: Props) {
               canPush={!!status?.branch}
               onStage={(paths) => run({ kind: 'stage', paths }, `Stage ${describe(paths)}`)}
               onUnstage={(paths) => run({ kind: 'unstage', paths }, `Unstage ${describe(paths)}`)}
+              onDiscard={discard}
               onCommit={async (message, push) => {
                 const ok = await run({ kind: 'commit', message }, `Commit: ${message.split('\n')[0]}`)
                 if (ok && push) await run({ kind: 'push' }, status?.upstream ? 'Push' : 'Publish branch')

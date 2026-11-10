@@ -1,12 +1,13 @@
+import { shell } from 'electron'
 import type { ChildProcess } from 'node:child_process'
+import { join } from 'node:path'
 import type { OpResult, Operation } from '../shared/types'
+import { repoFile } from './diff'
 import { runGit, runGitStreaming } from './git'
 import { readRefs } from './history'
 
-interface Command {
-  args: string[]
-  input?: string
-}
+/** A git command, or files moved to the system trash. */
+type Command = { args: string[]; input?: string } | { trash: string[] }
 
 class OperationError extends Error {}
 
@@ -106,6 +107,25 @@ async function plan(path: string, op: Operation): Promise<Command[]> {
       if (typeof op.message !== 'string' || op.message.trim() === '') throw new OperationError('Empty commit message')
       return [{ args: ['commit', '-F', '-'], input: op.message }]
     }
+    case 'discard': {
+      // A file added in the index is not in HEAD; restoring it from HEAD removes it, as intended.
+      const restore = op.staged ? ['restore', '--source=HEAD', '--staged', '--worktree'] : ['restore', '--worktree']
+      return [
+        {
+          args: ['--literal-pathspecs', ...restore, '--pathspec-from-file=-', '--pathspec-file-nul'],
+          input: nulList(op.paths)
+        }
+      ]
+    }
+    case 'trash':
+      nulList(op.paths)
+      return [{ trash: op.paths.map((p) => repoFile(path, p)) }]
+    case 'revert': {
+      if (typeof op.hash !== 'string' || !/^[0-9a-f]{7,64}$/i.test(op.hash)) throw new OperationError('Not a commit hash')
+      // `rev-list --parents` prints the commit and its parents; a merge needs the parent to revert against.
+      const ids = (await runGit(path, ['rev-list', '--parents', '-n', '1', op.hash])).trim().split(' ')
+      return [{ args: ['revert', '--no-edit', ...(ids.length > 2 ? ['-m', '1'] : []), op.hash] }]
+    }
     case 'stash-push':
       return [{ args: ['stash', 'push', '--include-untracked', '-m', 'RepoDash: stash'] }]
     case 'stash-pop':
@@ -163,6 +183,13 @@ export async function runOperation(
     const commands = await plan(path, op)
     for (const command of commands) {
       if (state.cancelled) return { ok: false, error: 'Cancelled' }
+      if ('trash' in command) {
+        for (const file of command.trash) {
+          emit(`Move to trash: ${file}\n`)
+          await shell.trashItem(join(path, file))
+        }
+        continue
+      }
       let output = ''
       const collect = (text: string) => {
         output += text

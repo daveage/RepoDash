@@ -502,6 +502,34 @@
   color: var(--cyan);
 }
 
+.file-group-head .section-title {
+  margin-right: auto;
+}
+
+.file-group-head .hud-btn + .hud-btn {
+  margin-left: 6px;
+}
+
+/* Shown on the row under the pointer or the keyboard, so the lists stay quiet. */
+.file-discard {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  font-size: 13px;
+  opacity: 0;
+}
+
+.file-row:hover .file-discard,
+.file-discard:focus-visible {
+  opacity: 1;
+}
+
+.file-discard:hover:not(:disabled) {
+  color: var(--red);
+  border-color: rgba(255, 97, 80, 0.5);
+}
+
 .file-row.selected {
   background: rgba(143, 230, 242, 0.08);
   box-shadow: inset 2px 0 0 var(--cyan);
@@ -977,6 +1005,15 @@
   margin-bottom: 18px;
   font-size: 15px;
   line-height: 1.45;
+}
+
+.dialog-files {
+  margin: 10px 0 0;
+  padding-left: 18px;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 12px;
+  word-break: break-all;
 }
 
 .dialog-actions {

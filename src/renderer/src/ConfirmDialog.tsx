@@ -27,6 +27,9 @@ export function ConfirmDialog({ title, children, choices, cancelLabel = 'Cancel'
     return () => window.removeEventListener('keydown', onKey, true)
   }, [onCancel])
 
+  // Enter confirms the focused button: for a destructive choice that is Cancel, not the choice.
+  const safeFocus = choices.length === 0 || choices[choices.length - 1].tone === 'danger'
+
   // Rendered into <body>, so a dialog opened from a card is not clipped or dragged along with it.
   return createPortal(
     <div className="dialog-backdrop" onClick={onCancel}>
@@ -34,14 +37,14 @@ export function ConfirmDialog({ title, children, choices, cancelLabel = 'Cancel'
         <div className="dialog-title">{title}</div>
         <div className="dialog-body">{children}</div>
         <div className="dialog-actions">
-          <button className="hud-btn" onClick={onCancel} autoFocus={choices.length === 0}>
+          <button className="hud-btn" onClick={onCancel} autoFocus={safeFocus}>
             {cancelLabel}
           </button>
           {choices.map((choice, index) => (
             <button
               key={choice.label}
               className={`hud-btn${choice.tone ? ` ${choice.tone}` : ''}`}
-              autoFocus={index === choices.length - 1}
+              autoFocus={!safeFocus && index === choices.length - 1}
               onClick={choice.onChoose}
             >
               {choice.label}

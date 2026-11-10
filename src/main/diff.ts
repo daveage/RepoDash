@@ -12,7 +12,7 @@ const MAX_UNTRACKED_FILES = 200
 const DIFF_ARGS = ['--literal-pathspecs', 'diff', '--no-color', '--no-ext-diff', '-M']
 
 /** A path from the renderer, checked to stay inside the repository. */
-function repoFile(repo: string, file: unknown): string {
+export function repoFile(repo: string, file: unknown): string {
   if (typeof file !== 'string' || file === '' || isAbsolute(file)) throw new Error('Not a file in the repository')
   const rel = relative(repo, resolve(repo, file))
   if (rel === '' || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) {

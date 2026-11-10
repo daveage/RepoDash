@@ -150,6 +150,12 @@ export type Operation =
   | { kind: 'stage'; paths: string[] }
   | { kind: 'unstage'; paths: string[] }
   | { kind: 'commit'; message: string }
+  /** Throws away changes: `staged` back to HEAD (index and working tree), otherwise the working tree to the index. */
+  | { kind: 'discard'; paths: string[]; staged: boolean }
+  /** Untracked files and folders go to the system trash, so they can still be recovered. */
+  | { kind: 'trash'; paths: string[] }
+  /** A new commit that undoes `hash`; a merge is undone against its first parent. */
+  | { kind: 'revert'; hash: string }
   | { kind: 'stash-push' }
   | { kind: 'stash-pop' }
   | { kind: 'abort'; operation: RepoOperation }

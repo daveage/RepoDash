@@ -65,6 +65,11 @@ UI (<https://gmunk.com/Oblivion-GFX>).
 - Commit messages go through stdin (`commit -F -`). Push of a branch without upstream publishes it to
   `origin` (or the only remote) with `--set-upstream`. Pull is `--ff-only`; a diverged branch asks first
   (see below).
+- Discard (asks first, Cancel has the focus): unstaged changes `restore --worktree` (back to the index), staged
+  ones `restore --source=HEAD --staged --worktree` (a file added in the index is removed, a staged rename gets
+  both paths), untracked files and folders go to the system trash (`shell.trashItem`), so they can be recovered.
+- Revert: `git revert --no-edit`, `-m 1` for a merge; a conflict leaves a revert in progress for the banner's
+  Continue / Abort.
 - A failure's summary is git's rejected refs first (they say why a push failed), then its `fatal:`/`error:`
   lines, never its `hint:` lines.
 

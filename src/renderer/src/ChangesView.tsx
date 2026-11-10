@@ -13,7 +13,11 @@ interface Props {
   onStage(paths: string[]): void
   onUnstage(paths: string[]): void
   onCommit(message: string, push: boolean): Promise<boolean>
+  /** Asks first, then throws the changes away (untracked files go to the trash). */
+  onDiscard(kind: DiscardKind, paths: string[]): void
 }
+
+export type DiscardKind = 'staged' | 'unstaged' | 'untracked'
 
 type Group = 'conflict' | 'staged' | 'unstaged' | 'untracked'
 
@@ -61,7 +65,7 @@ const LETTER_NAMES: Record<string, string> = {
 /** Rendering thousands of rows (e.g. a forgotten build folder) would only freeze the panel. */
 const MAX_ROWS = 500
 
-export function ChangesView({ path, stamp, files, busy, canPush, onStage, onUnstage, onCommit }: Props) {
+export function ChangesView({ path, stamp, files, busy, canPush, onStage, onUnstage, onCommit, onDiscard }: Props) {
   const [message, setMessage] = useState('')
   const [chosen, setChosen] = useState<Selection | null>(null)
   const selected = follow(chosen, files)
@@ -129,6 +133,8 @@ export function ChangesView({ path, stamp, files, busy, canPush, onStage, onUnst
             onFile={(f) => onUnstage(stagedPaths([f]))}
             open={openIn('staged')}
             onOpen={open('staged')}
+            discard="Discard"
+            onDiscard={(list) => onDiscard('staged', stagedPaths(list))}
           />
           <FileGroup
             title="Changes"
@@ -141,6 +147,8 @@ export function ChangesView({ path, stamp, files, busy, canPush, onStage, onUnst
             onFile={(f) => onStage([f.path])}
             open={openIn('unstaged')}
             onOpen={open('unstaged')}
+            discard="Discard"
+            onDiscard={(list) => onDiscard('unstaged', list.map((f) => f.path))}
           />
           <FileGroup
             title="Untracked"
@@ -152,6 +160,8 @@ export function ChangesView({ path, stamp, files, busy, canPush, onStage, onUnst
             onFile={(f) => onStage([f.path])}
             open={openIn('untracked')}
             onOpen={open('untracked')}
+            discard="Trash"
+            onDiscard={(list) => onDiscard('untracked', list.map((f) => f.path))}
           />
         </div>
 
@@ -219,9 +229,13 @@ interface GroupProps {
   /** The file whose diff is open, if it is in this group. */
   open: FileChange | undefined
   onOpen(file: FileChange): void
+  /** Label of the discard action ("Discard", "Trash"); groups without one cannot be discarded. */
+  discard?: string
+  onDiscard?(files: FileChange[]): void
 }
 
-function FileGroup({ title, tone, files, letter, checked, action, busy, onAll, onFile, open, onOpen }: GroupProps) {
+function FileGroup(props: GroupProps) {
+  const { title, tone, files, letter, checked, action, busy, onAll, onFile, open, onOpen, discard, onDiscard } = props
   if (files.length === 0) return null
   return (
     <section className={`file-group${tone ? ` tone-${tone}` : ''}`}>
@@ -229,6 +243,11 @@ function FileGroup({ title, tone, files, letter, checked, action, busy, onAll, o
         <span className="section-title">
           {title} <span className="group-count">{files.length}</span>
         </span>
+        {discard && onDiscard && (
+          <button className="hud-btn small danger" disabled={busy} onClick={() => onDiscard(files)}>
+            {discard} all
+          </button>
+        )}
         <button className="hud-btn small" disabled={busy} onClick={onAll}>
           {action}
         </button>
@@ -255,6 +274,16 @@ function FileGroup({ title, tone, files, letter, checked, action, busy, onAll, o
                 {file.origPath && <span className="file-orig">{file.origPath} → </span>}
                 {file.path}
               </button>
+              {discard && onDiscard && (
+                <button
+                  className="icon-btn file-discard"
+                  disabled={busy}
+                  onClick={() => onDiscard([file])}
+                  title={discard === 'Trash' ? 'Move to trash' : 'Discard changes'}
+                >
+                  ↺
+                </button>
+              )}
             </li>
           )
         })}

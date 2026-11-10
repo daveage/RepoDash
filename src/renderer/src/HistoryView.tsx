@@ -9,8 +9,12 @@ interface Props {
   path: string
   history: History | null
   scope: HistoryScope
+  /** No operation running and no merge or rebase in progress. */
+  canRevert: boolean
   onScope(scope: HistoryScope): void
   onMore(): void
+  /** Asks first, then makes a commit that undoes `commit`. */
+  onRevert(commit: HistoryCommit): void
 }
 
 /** Must match `.commit` height in detail.css: the graph is one SVG behind rows of this height. */
@@ -24,7 +28,7 @@ const lane = (index: number) => ({ '--lane': laneColor(index) }) as CSSPropertie
 const x = (column: number) => PAD + column * COL_W
 const y = (row: number) => row * ROW_H + ROW_H / 2
 
-export function HistoryView({ path, history, scope, onScope, onMore }: Props) {
+export function HistoryView({ path, history, scope, canRevert, onScope, onMore, onRevert }: Props) {
   // Clicking a legend entry picks out that branch's commits.
   const [focus, setFocus] = useState<number | null>(null)
   const [openHash, setOpenHash] = useState<string | null>(null)
@@ -74,6 +78,8 @@ export function HistoryView({ path, history, scope, onScope, onMore }: Props) {
           newer={openIndex > 0 ? commits[openIndex - 1] : undefined}
           onOpen={setOpenHash}
           onBack={() => setOpenHash(null)}
+          canRevert={canRevert}
+          onRevert={onRevert}
         />
       </div>
     )
@@ -209,9 +215,11 @@ interface CommitProps {
   newer: HistoryCommit | undefined
   onOpen(hash: string): void
   onBack(): void
+  canRevert: boolean
+  onRevert(commit: HistoryCommit): void
 }
 
-function CommitView({ path, hash, commit, older, newer, onOpen, onBack }: CommitProps) {
+function CommitView({ path, hash, commit, older, newer, onOpen, onBack, canRevert, onRevert }: CommitProps) {
   const { diff, error } = useDiff(path, { kind: 'commit', hash })
   return (
     <>
@@ -229,6 +237,14 @@ function CommitView({ path, hash, commit, older, newer, onOpen, onBack }: Commit
           </span>
         )}
         <span className="spacer" />
+        <button
+          className="hud-btn small danger"
+          disabled={!commit || !canRevert}
+          onClick={() => commit && onRevert(commit)}
+          title="Make a new commit that undoes this one"
+        >
+          Revert
+        </button>
         <button className="hud-btn small" disabled={!newer} onClick={() => newer && onOpen(newer.hash)} title="Newer commit (K)">
           Newer
         </button>

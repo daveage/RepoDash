@@ -19,7 +19,8 @@ Windows, macOS and Linux (Electron). RepoDash runs your own `git`, so credential
 - **Sources** — add a folder to scan for repositories (depth-limited, nested clones included) or single
   repositories. Remove a scanned repository from the dashboard and it stays hidden until you restore it.
 - **Operations** — fetch, pull, push (publish a new branch to `origin`), switch to a local or remote branch,
-  create a branch, stage / unstage, commit (and push), stash / pop, continue or abort a merge or rebase.
+  create a branch, stage / unstage, commit (and push), stash / pop, continue or abort a merge or rebase,
+  discard changes per file or per group, revert a commit.
   Git's output streams into a console per repository; a failure tells you git's reason, not just "failed".
 - **History** with a commit graph: every branch has its own colour, and the legend picks one out.
 - **Diffs** of unstaged, staged, conflicted and new files, and of any commit in the history.
@@ -39,6 +40,8 @@ Windows, macOS and Linux (Electron). RepoDash runs your own `git`, so credential
   changes are stashed and put back around it). After a conflict you mark files resolved and **continue**, or
   **abort**.
 - Switching branches with uncommitted changes asks: carry the changes over, or stash them first.
+- Discarding changes asks first and lists the files; new (untracked) files go to the Recycle Bin / Trash rather
+  than being deleted. Reverting a commit adds a new commit that undoes it; history is never rewritten.
 - Aborting a merge or rebase asks first. There is no force push.
 - git never waits for a password prompt; it fails and says why.
 
