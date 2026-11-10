@@ -111,7 +111,7 @@ npm run dev         # app with hot reload
 npm run typecheck   # TypeScript check
 npm run build       # production build into out/
 npm run dist        # installer into dist/
-npm run icons       # render resources/*.svg into the PNG icons
+npm run icons       # app icon from resources/icon-source.png, tray icons from resources/*.svg
 ```
 
 Electron, React and TypeScript, built with electron-vite. The main process (`src/main`) runs git, watches

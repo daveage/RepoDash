@@ -171,7 +171,8 @@ npm run dev             # app with hot reload
 npm run build           # production build into out/
 npm run typecheck       # TypeScript check
 npm run dist            # installer for the current platform into dist/ (NSIS / dmg / AppImage)
-npm run icons           # render resources/*.svg into the committed PNGs (app, tray, badge icons)
+npm run icons           # icon.png from icon-source.png (white surroundings made transparent),
+                        # tray and badge PNGs from resources/*.svg; the PNGs are committed
 ```
 
 The PNGs in `resources/` are referenced from `out/main` at runtime (electron-vite `?asset`), so the
