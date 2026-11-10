@@ -194,6 +194,7 @@ export function ChangesView({ path, stamp, files, busy, canPush, onStage, onUnst
           <DiffView
             diff={diff}
             error={error}
+            empty={selected.group === 'unstaged' ? NO_CONTENT_CHANGE : undefined}
             title={
               <>
                 <span className="section-title">{GROUP_TITLES[selected.group]}</span>
@@ -208,6 +209,15 @@ export function ChangesView({ path, stamp, files, busy, canPush, onStage, onUnst
     </div>
   )
 }
+
+const NO_CONTENT_CHANGE = (
+  <>
+    <strong>No content change.</strong> git lists the file as modified, but once it converts the file the way it
+    stores it, the content is the same as the staged or committed one. Usually only the line endings were
+    rewritten (CRLF / LF, see <code>core.autocrlf</code>). Staging the file or discarding it with ↺ takes it off
+    the list; nothing is lost either way.
+  </>
+)
 
 const GROUP_TITLES: Record<Group, string> = {
   conflict: 'Conflict',

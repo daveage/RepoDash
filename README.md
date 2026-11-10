@@ -23,7 +23,8 @@ Windows, macOS and Linux (Electron). RepoDash runs your own `git`, so credential
   discard changes per file or per group, revert a commit.
   Git's output streams into a console per repository; a failure tells you git's reason, not just "failed".
 - **History** with a commit graph: every branch has its own colour, and the legend picks one out.
-- **Diffs** of unstaged, staged, conflicted and new files, and of any commit in the history.
+- **Diffs** of unstaged, staged, conflicted and new files, and of any commit in the history. Changes without
+  visible text (line endings only, file mode, a pure rename) say so. Drag the panel's left edge to widen it.
 - **Fetch all** and **Pull clean** — update every repository that has no local changes and is only behind.
 - **Background** — optional auto fetch every 5–60 minutes, desktop notifications for new remote commits and
   finished operations while RepoDash is in the background, a tray icon and a taskbar / dock badge while any

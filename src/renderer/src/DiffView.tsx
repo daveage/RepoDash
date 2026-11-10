@@ -8,6 +8,8 @@ interface Props {
   error?: string | null
   /** Shown above the diff while it loads and after; a file path or a commit. */
   title?: ReactNode
+  /** Shown when git's diff is empty. */
+  empty?: ReactNode
 }
 
 interface Loaded {
@@ -43,7 +45,15 @@ const MAX_LINES = 6000
 
 const STATUS_LETTER: Record<DiffFile['status'], string> = { modified: 'M', added: 'A', deleted: 'D', renamed: 'R' }
 
-export function DiffView({ diff, error, title }: Props) {
+/** A file git lists without a single line: say why rather than show an empty box. */
+const NO_LINES: Record<DiffFile['status'], string> = {
+  modified: 'No content change',
+  added: 'Empty file',
+  deleted: 'Empty file deleted',
+  renamed: 'Renamed without content changes'
+}
+
+export function DiffView({ diff, error, title, empty }: Props) {
   const files = useMemo(() => (diff ? parseDiff(diff.text) : null), [diff])
   const fileRefs = useRef<(HTMLElement | null)[]>([])
 
@@ -58,7 +68,7 @@ export function DiffView({ diff, error, title }: Props) {
       ) : (
         <>
           {diff.message && <pre className="diff-message">{diff.message}</pre>}
-          {files.length === 0 && <div className="pane-empty">No changes</div>}
+          {files.length === 0 && (empty ? <div className="diff-empty">{empty}</div> : <div className="pane-empty">No changes</div>)}
           {files.length > 1 && (
             <ul className="diff-index">
               {files.map((file, index) => (
@@ -96,6 +106,13 @@ export function DiffView({ diff, error, title }: Props) {
                       </span>
                     </div>
                   ))}
+                  {file.lines.length === 0 && (
+                    <div className="diff-line note">
+                      <span className="ln" />
+                      <span className="ln" />
+                      <span className="code">{NO_LINES[file.status]}</span>
+                    </div>
+                  )}
                   {shown.length < file.lines.length && (
                     <div className="diff-line note">
                       <span className="ln" />

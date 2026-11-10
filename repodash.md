@@ -105,6 +105,13 @@ or **Abort**.
   graph draws it); Newer / Older or K / J step through the history, Esc returns to the list where it was.
 - Output is read with a 1 MB cap (`runGitCapped`), the view renders at most 6000 lines. Paths from the renderer
   must resolve inside the repository; commit ids must be hex.
+- Changes git shows without text get a note instead of an empty box: a mode change (`File mode 100644 → 100755`),
+  a rename without changes, an empty file, and a file whose removed lines all come back with only a CR added or
+  dropped ("Only line endings differ"). A modified file with an empty diff explains that its content matches
+  once git converts it, usually line endings (`core.autocrlf`); staging or discarding it removes it from the list.
+- The panel's left edge resizes it (drag, or the arrow keys on the focused edge; double-click restores the
+  default). The width is kept in the renderer's `localStorage`, for every repository. Only a click that also
+  started on the backdrop closes the panel, so a text selection in a diff that ends outside it does not.
 
 ## Bulk operations, background, tray
 

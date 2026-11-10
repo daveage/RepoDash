@@ -73,6 +73,40 @@
   border-left-color: color-mix(in srgb, var(--accent) 60%, transparent);
 }
 
+/* The panel's left edge; a strip wider than the line it lights, so it is easy to grab. */
+.panel-resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 3;
+  width: 7px;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.panel-resize::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 2px;
+  background: var(--accent);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.panel-resize:hover::after,
+.panel-resize:focus-visible::after,
+.panel-resize:active::after {
+  opacity: 0.8;
+}
+
+.panel-resize:focus-visible {
+  outline: none;
+}
+
 .detail-head {
   display: flex;
   align-items: flex-start;
@@ -797,6 +831,24 @@
 
 .diff-line.note {
   color: var(--dim);
+}
+
+.diff-empty {
+  padding: 12px 14px;
+  border-left: 2px solid var(--amber);
+  color: var(--dim);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.diff-empty strong {
+  color: var(--text);
+  font-weight: 500;
+}
+
+.diff-empty code {
+  font-family: var(--mono);
+  font-size: 12px;
 }
 
 .diff-cut {

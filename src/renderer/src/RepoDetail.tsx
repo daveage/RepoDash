@@ -16,6 +16,7 @@ import { isDirty, summarize } from './format'
 import { HistoryView } from './HistoryView'
 import { actionForKey, clickAction, dialogOpen, hasModifier, isTypingTarget } from './keys'
 import type { ConsoleEntry } from './operations'
+import { PanelResize, usePanelWidth } from './PanelResize'
 import { RepoActions } from './RepoActions'
 
 export type DetailTab = 'history' | 'changes' | 'branches' | 'console'
@@ -55,6 +56,10 @@ export function RepoDetail(props: Props) {
   const [limit, setLimit] = useState(HISTORY_PAGE)
   const [prompt, setPrompt] = useState<Prompt | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
+  const panelWidth = usePanelWidth()
+  // Only a click that also started on the backdrop closes the panel: selecting text in a diff or dragging
+  // the panel edge may well end outside it.
+  const pressedBackdrop = useRef(false)
 
   // Every status refresh means something changed: re-read files, branches and history.
   const stamp = status?.checkedAt
@@ -203,13 +208,18 @@ export function RepoDetail(props: Props) {
   const summary = status ? summarize(status) : null
 
   return (
-    <div className="drawer-backdrop" onClick={onClose}>
+    <div
+      className="drawer-backdrop"
+      onPointerDown={(event) => (pressedBackdrop.current = event.target === event.currentTarget)}
+      onClick={(event) => event.target === event.currentTarget && pressedBackdrop.current && onClose()}
+    >
       <aside
         ref={panelRef}
         className="drawer detail"
-        style={{ '--accent': accent } as CSSProperties}
+        style={{ '--accent': accent, ...panelWidth.style } as CSSProperties}
         onClick={(event) => event.stopPropagation()}
       >
+        <PanelResize width={panelWidth.width} onChange={panelWidth.change} />
         <header className="detail-head">
           <div className="detail-title">
             <span className="detail-name">{name}</span>
