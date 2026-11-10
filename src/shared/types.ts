@@ -49,6 +49,14 @@ export interface RepoEntry {
   sourceId: string
 }
 
+export interface Settings {
+  /** Minutes between background fetches of every repository; 0 turns them off. */
+  autoFetchMinutes: number
+  notifications: boolean
+}
+
+export const AUTO_FETCH_CHOICES = [0, 5, 15, 30, 60]
+
 /** Everything the renderer shows apart from git status, pushed by the main process on every change. */
 export interface Snapshot {
   sources: Source[]
@@ -57,6 +65,7 @@ export interface Snapshot {
   /** Repositories found by a folder scan that the user removed from the dashboard. */
   hidden: string[]
   meta: Record<string, RepoMeta>
+  settings: Settings
   scanning: boolean
 }
 
@@ -159,6 +168,41 @@ export interface OpOutput {
   text: string
 }
 
+/** What a diff shows: a file's unstaged or staged changes, an untracked file or folder, or a commit. */
+export type DiffTarget =
+  | { kind: 'worktree'; file: string }
+  /** `origFile`: the path before a staged rename, so the diff shows the rename. */
+  | { kind: 'staged'; file: string; origFile?: string }
+  | { kind: 'untracked'; file: string }
+  | { kind: 'commit'; hash: string }
+
+export interface Diff {
+  /** Unified diff as git prints it. */
+  text: string
+  /** Commits: the full message. */
+  message?: string
+  /** The diff was cut at the size limit. */
+  truncated: boolean
+}
+
+/** Counts the renderer reports for the tray icon and the taskbar or dock badge. */
+export interface Summary {
+  dirty: number
+  outOfSync: number
+  /** Repositories "Pull clean" would update. */
+  pullable: number
+}
+
+export interface Notice {
+  title: string
+  body: string
+  /** Clicking the notification opens this repository. */
+  path?: string
+}
+
+/** Requests from the tray menu and notifications, carried out by the renderer like its own buttons. */
+export type UiCommand = { kind: 'fetch-all' } | { kind: 'pull-clean' } | { kind: 'open'; path: string }
+
 /** API the preload script exposes to the renderer as `window.repodash`. */
 export interface RepoDashApi {
   getSnapshot(): Promise<Snapshot>
@@ -176,11 +220,17 @@ export interface RepoDashApi {
   restoreRepo(path: string): Promise<Snapshot>
   setOrder(paths: string[]): Promise<Snapshot>
   setMeta(path: string, meta: RepoMeta): Promise<Snapshot>
+  setSettings(settings: Partial<Settings>): Promise<Snapshot>
 
   getDetails(path: string): Promise<RepoDetails>
   getHistory(path: string, scope: HistoryScope, limit: number): Promise<History>
+  getDiff(path: string, target: DiffTarget): Promise<Diff>
   /** Resolves when the operation ends; its output streams through `onOpOutput` under `opId`. */
   runOperation(path: string, op: Operation, opId: string): Promise<OpResult>
   cancelOperation(opId: string): Promise<void>
   onOpOutput(listener: (output: OpOutput) => void): () => void
+
+  setSummary(summary: Summary): void
+  notify(notice: Notice): void
+  onCommand(listener: (command: UiCommand) => void): () => void
 }

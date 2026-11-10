@@ -48,6 +48,36 @@ export function runGit(cwd: string, args: string[]): Promise<string> {
   )
 }
 
+/** Like `runGit`, but stops reading after `maxBytes` of output instead of failing on huge output. */
+export function runGitCapped(cwd: string, args: string[], maxBytes: number): Promise<{ text: string; truncated: boolean }> {
+  return withSlot(
+    () =>
+      new Promise((resolve, reject) => {
+        const child = spawn('git', ['-c', 'core.quotepath=false', ...args], { cwd, env: GIT_ENV, windowsHide: true })
+        const chunks: Buffer[] = []
+        let size = 0
+        let truncated = false
+        let stderr = ''
+        child.stdout.on('data', (chunk: Buffer) => {
+          if (truncated) return
+          chunks.push(chunk)
+          size += chunk.length
+          if (size > maxBytes) {
+            truncated = true
+            child.kill()
+          }
+        })
+        child.stderr.setEncoding('utf8').on('data', (text: string) => (stderr += text))
+        child.stdin.end()
+        child.on('error', (error) => reject(new GitError(error.message)))
+        child.on('close', (code) => {
+          if (code !== 0 && !truncated) return reject(new GitError(stderr.trim() || `git exited with ${code}`))
+          resolve({ text: Buffer.concat(chunks).subarray(0, maxBytes).toString('utf8'), truncated })
+        })
+      })
+  )
+}
+
 /** Environment for commands that change the repository; unlike status, these must take locks. */
 const OPERATION_ENV: NodeJS.ProcessEnv = {
   ...process.env,

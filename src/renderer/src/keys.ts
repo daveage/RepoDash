@@ -11,9 +11,9 @@ export function hasModifier(event: KeyboardEvent): boolean {
 
 export type ActionKey = 'fetch' | 'pull' | 'push'
 
-/** F fetch, P pull, Shift+P push. */
+/** F fetch, P pull, Shift+P push. (Shift+F is Fetch all on the grid.) */
 export function actionForKey(event: KeyboardEvent): ActionKey | null {
-  if (event.key === 'f' || event.key === 'F') return 'fetch'
+  if (event.key === 'f') return 'fetch'
   if (event.key === 'p') return 'pull'
   if (event.key === 'P') return 'push'
   return null
@@ -38,9 +38,12 @@ export const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: 'F', action: 'Fetch' },
   { keys: 'P', action: 'Pull' },
   { keys: 'Shift+P', action: 'Push' },
+  { keys: 'Shift+F', action: 'Fetch all' },
+  { keys: 'Shift+U', action: 'Pull clean: every clean repository that is only behind' },
   { keys: 'R / Shift+R', action: 'Refresh card / all' },
   { keys: 'Space on card header', action: 'Pick up card; arrows move it, Space drops it' },
   { keys: '1 – 4', action: 'Panel tabs' },
-  { keys: 'Esc', action: 'Close panel or dialog' },
+  { keys: 'J / K', action: 'Older / newer commit in a commit diff' },
+  { keys: 'Esc', action: 'Close diff, panel or dialog' },
   { keys: '?', action: 'This list' }
 ]

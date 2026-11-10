@@ -23,12 +23,18 @@ const api: RepoDashApi = {
   restoreRepo: (path) => ipcRenderer.invoke('repo:restore', path),
   setOrder: (paths) => ipcRenderer.invoke('repo:set-order', paths),
   setMeta: (path, meta) => ipcRenderer.invoke('repo:set-meta', path, meta),
+  setSettings: (settings) => ipcRenderer.invoke('settings:set', settings),
 
   getDetails: (path) => ipcRenderer.invoke('repo:details', path),
   getHistory: (path, scope, limit) => ipcRenderer.invoke('repo:history', path, scope, limit),
+  getDiff: (path, target) => ipcRenderer.invoke('repo:diff', path, target),
   runOperation: (path, op, opId) => ipcRenderer.invoke('op:run', path, op, opId),
   cancelOperation: (opId) => ipcRenderer.invoke('op:cancel', opId),
-  onOpOutput: (listener) => subscribe('op:output', listener)
+  onOpOutput: (listener) => subscribe('op:output', listener),
+
+  setSummary: (summary) => ipcRenderer.send('ui:summary', summary),
+  notify: (notice) => ipcRenderer.send('ui:notify', notice),
+  onCommand: (listener) => subscribe('ui:command', listener)
 }
 
 contextBridge.exposeInMainWorld('repodash', api)

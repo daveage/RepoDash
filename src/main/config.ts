@@ -1,7 +1,7 @@
 import { app } from 'electron'
 import { copyFileSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import type { RepoMeta, Source } from '../shared/types'
+import type { RepoMeta, Settings, Source } from '../shared/types'
 
 export interface Config {
   version: 1
@@ -9,10 +9,14 @@ export interface Config {
   hidden: string[]
   order: string[]
   meta: Record<string, RepoMeta>
+  settings: Settings
 }
 
+// Background fetches reach the network, so they wait until the user turns them on.
+const DEFAULT_SETTINGS: Settings = { autoFetchMinutes: 0, notifications: true }
+
 function emptyConfig(): Config {
-  return { version: 1, sources: [], hidden: [], order: [], meta: {} }
+  return { version: 1, sources: [], hidden: [], order: [], meta: {}, settings: { ...DEFAULT_SETTINGS } }
 }
 
 function configFile(): string {
@@ -28,7 +32,9 @@ export function loadConfig(): Config {
     return emptyConfig()
   }
   try {
-    return { ...emptyConfig(), ...JSON.parse(text) }
+    const parsed = JSON.parse(text)
+    // Settings added in a later version get their defaults.
+    return { ...emptyConfig(), ...parsed, settings: { ...DEFAULT_SETTINGS, ...parsed.settings } }
   } catch {
     // Keep the unreadable file for the user instead of overwriting it on the next save.
     copyFileSync(file, `${file}.bad`)

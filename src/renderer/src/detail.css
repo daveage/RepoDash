@@ -385,6 +385,10 @@
   transition: opacity 0.15s;
 }
 
+.commit {
+  cursor: pointer;
+}
+
 .commit:hover {
   background: rgba(143, 230, 242, 0.04);
 }
@@ -464,10 +468,43 @@
 
 /* ---------- changes ---------- */
 
-.changes-pane {
+.changes-side {
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+/* With a diff open: file lists on the left, the diff on the right, each scrolling on its own. */
+.changes-pane.split {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: 20px;
+  height: 100%;
+}
+
+.changes-pane.split .changes-side,
+.changes-diff {
+  min-height: 0;
+  overflow: auto;
+}
+
+.file-open {
+  flex: 1;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.file-open:hover {
+  color: var(--cyan);
+}
+
+.file-row.selected {
+  background: rgba(143, 230, 242, 0.08);
+  box-shadow: inset 2px 0 0 var(--cyan);
 }
 
 .file-group-head {
@@ -586,6 +623,164 @@
   flex: 1;
   color: var(--faint);
   font-size: 12px;
+}
+
+/* ---------- diff ---------- */
+
+.diff {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.diff-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.diff-message {
+  margin: 0;
+  padding: 10px 12px;
+  border-left: 2px solid var(--line-strong);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+  user-select: text;
+}
+
+.diff-index {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.diff-index-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 24px;
+  padding: 0 4px;
+  background: none;
+  border: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.diff-index-row:hover {
+  background: rgba(143, 230, 242, 0.04);
+}
+
+.diff-index-row .file-path {
+  flex: 1;
+}
+
+.diff-counts {
+  display: flex;
+  gap: 8px;
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.diff-added {
+  color: #7cf2b0;
+}
+
+.diff-removed {
+  color: var(--red);
+}
+
+.diff-file {
+  border: 1px solid var(--line);
+}
+
+.diff-file-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
+}
+
+.diff-file-head .file-path {
+  flex: 1;
+}
+
+/* Long lines scroll sideways rather than wrap, so indentation stays readable; one grid column keeps
+   every row as wide as the longest, so the line colours reach across. */
+.diff-lines {
+  display: grid;
+  grid-template-columns: minmax(100%, max-content);
+  overflow-x: auto;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 19px;
+  user-select: text;
+}
+
+.diff-line {
+  display: grid;
+  grid-template-columns: 44px 44px max-content;
+}
+
+.diff-line .ln {
+  padding-right: 8px;
+  color: var(--faint);
+  text-align: right;
+  user-select: none;
+}
+
+.diff-line .code {
+  padding: 0 12px 0 4px;
+  white-space: pre;
+}
+
+.diff-line.add {
+  background: rgba(124, 242, 176, 0.08);
+}
+
+.diff-line.add .code {
+  color: #a6f7cb;
+}
+
+.diff-line.del {
+  background: rgba(255, 97, 80, 0.08);
+}
+
+.diff-line.del .code {
+  color: #ff9c8f;
+}
+
+.diff-line.hunk {
+  margin-top: 4px;
+  background: rgba(143, 230, 242, 0.05);
+  color: var(--cyan);
+}
+
+.diff-line.note {
+  color: var(--dim);
+}
+
+.diff-cut {
+  color: var(--amber);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.commit-view-hash {
+  color: var(--lane);
+  font-family: var(--mono);
+  font-size: 13px;
 }
 
 /* ---------- branches ---------- */

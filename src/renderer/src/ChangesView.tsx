@@ -1,13 +1,51 @@
-import { useState } from 'react'
-import type { FileChange } from '../../shared/types'
+import { useEffect, useState } from 'react'
+import type { DiffTarget, FileChange } from '../../shared/types'
+import { DiffView, useDiff } from './DiffView'
+import { dialogOpen, isTypingTarget } from './keys'
 
 interface Props {
+  path: string
+  /** Changes on every status refresh; the open diff is read again then. */
+  stamp: number | undefined
   files: FileChange[] | null
   busy: boolean
   canPush: boolean
   onStage(paths: string[]): void
   onUnstage(paths: string[]): void
   onCommit(message: string, push: boolean): Promise<boolean>
+}
+
+type Group = 'conflict' | 'staged' | 'unstaged' | 'untracked'
+
+interface Selection {
+  group: Group
+  file: FileChange
+}
+
+function inGroup(file: FileChange, group: Group): boolean {
+  if (group === 'conflict') return file.kind === 'conflict'
+  if (group === 'untracked') return file.kind === 'untracked'
+  if (file.kind === 'untracked' || file.kind === 'conflict') return false
+  return group === 'staged' ? file.index !== '.' : file.worktree !== '.'
+}
+
+function diffTarget({ group, file }: Selection): DiffTarget {
+  if (group === 'staged') return { kind: 'staged', file: file.path, origFile: file.origPath }
+  if (group === 'untracked') return { kind: 'untracked', file: file.path }
+  return { kind: 'worktree', file: file.path }
+}
+
+/** After staging or unstaging, the open file is followed to the group it moved to. */
+function follow(selection: Selection | null, files: FileChange[] | null): Selection | null {
+  if (!selection || !files) return selection
+  const same = files.filter((f) => f.path === selection.file.path)
+  const stay = same.find((f) => inGroup(f, selection.group))
+  if (stay) return stay === selection.file ? selection : { group: selection.group, file: stay }
+  for (const group of ['staged', 'unstaged', 'conflict', 'untracked'] as Group[]) {
+    const moved = same.find((f) => inGroup(f, group))
+    if (moved) return { group, file: moved }
+  }
+  return null
 }
 
 const LETTER_NAMES: Record<string, string> = {
@@ -23,14 +61,31 @@ const LETTER_NAMES: Record<string, string> = {
 /** Rendering thousands of rows (e.g. a forgotten build folder) would only freeze the panel. */
 const MAX_ROWS = 500
 
-export function ChangesView({ files, busy, canPush, onStage, onUnstage, onCommit }: Props) {
+export function ChangesView({ path, stamp, files, busy, canPush, onStage, onUnstage, onCommit }: Props) {
   const [message, setMessage] = useState('')
+  const [chosen, setChosen] = useState<Selection | null>(null)
+  const selected = follow(chosen, files)
+  const { diff, error } = useDiff(path, selected && diffTarget(selected), stamp)
+
+  // Esc closes the diff before it closes the panel; in a field it only leaves the field.
+  const hasSelection = selected !== null
+  useEffect(() => {
+    if (!hasSelection) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || dialogOpen() || isTypingTarget(event.target)) return
+      event.stopPropagation()
+      setChosen(null)
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [hasSelection])
+
   if (!files) return <div className="pane-empty">Reading changes…</div>
 
-  const staged = files.filter((f) => f.kind !== 'untracked' && f.kind !== 'conflict' && f.index !== '.')
-  const unstaged = files.filter((f) => f.kind !== 'untracked' && f.kind !== 'conflict' && f.worktree !== '.')
-  const untracked = files.filter((f) => f.kind === 'untracked')
-  const conflicts = files.filter((f) => f.kind === 'conflict')
+  const staged = files.filter((f) => inGroup(f, 'staged'))
+  const unstaged = files.filter((f) => inGroup(f, 'unstaged'))
+  const untracked = files.filter((f) => inGroup(f, 'untracked'))
+  const conflicts = files.filter((f) => inGroup(f, 'conflict'))
   // Unstaging a rename has to reset both of its paths.
   const stagedPaths = (list: FileChange[]) => list.flatMap((f) => (f.origPath ? [f.path, f.origPath] : [f.path]))
   const canCommit = staged.length > 0 && conflicts.length === 0 && message.trim() !== '' && !busy
@@ -42,76 +97,113 @@ export function ChangesView({ files, busy, canPush, onStage, onUnstage, onCommit
 
   if (files.length === 0) return <div className="pane-empty">Working tree clean</div>
 
-  return (
-    <div className="changes-pane">
-      <div className="changes-lists">
-        {conflicts.length > 0 && (
-          <FileGroup
-            title="Conflicts"
-            tone="alert"
-            files={conflicts}
-            letter={() => 'U'}
-            action="Mark resolved"
-            busy={busy}
-            onAll={() => onStage(conflicts.map((f) => f.path))}
-            onFile={(f) => onStage([f.path])}
-          />
-        )}
-        <FileGroup
-          title="Staged"
-          files={staged}
-          letter={(f) => f.index}
-          checked
-          action="Unstage all"
-          busy={busy}
-          onAll={() => onUnstage(stagedPaths(staged))}
-          onFile={(f) => onUnstage(stagedPaths([f]))}
-        />
-        <FileGroup
-          title="Changes"
-          tone="warn"
-          files={unstaged}
-          letter={(f) => f.worktree}
-          action="Stage all"
-          busy={busy}
-          onAll={() => onStage(unstaged.map((f) => f.path))}
-          onFile={(f) => onStage([f.path])}
-        />
-        <FileGroup
-          title="Untracked"
-          files={untracked}
-          letter={() => '?'}
-          action="Stage all"
-          busy={busy}
-          onAll={() => onStage(untracked.map((f) => f.path))}
-          onFile={(f) => onStage([f.path])}
-        />
-      </div>
+  const open = (group: Group) => (file: FileChange) => setChosen({ group, file })
+  const openIn = (group: Group) => (selected?.group === group ? selected.file : undefined)
 
-      <div className="commit-box">
-        <textarea
-          className="hud-input commit-message"
-          placeholder="Commit message"
-          value={message}
-          onChange={(event) => setMessage(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) void commit(false)
-          }}
-        />
-        <div className="commit-actions">
-          <span className="commit-hint">
-            {conflicts.length > 0 ? 'Resolve conflicts first' : staged.length === 0 ? 'Stage files to commit' : 'Ctrl+Enter commits'}
-          </span>
-          <button className="hud-btn" disabled={!canCommit} onClick={() => commit(false)}>
-            Commit
-          </button>
-          <button className="hud-btn primary" disabled={!canCommit || !canPush} onClick={() => commit(true)}>
-            Commit & push
-          </button>
+  return (
+    <div className={selected ? 'changes-pane split' : 'changes-pane'}>
+      <div className="changes-side">
+        <div className="changes-lists">
+          {conflicts.length > 0 && (
+            <FileGroup
+              title="Conflicts"
+              tone="alert"
+              files={conflicts}
+              letter={() => 'U'}
+              action="Mark resolved"
+              busy={busy}
+              onAll={() => onStage(conflicts.map((f) => f.path))}
+              onFile={(f) => onStage([f.path])}
+              open={openIn('conflict')}
+              onOpen={open('conflict')}
+            />
+          )}
+          <FileGroup
+            title="Staged"
+            files={staged}
+            letter={(f) => f.index}
+            checked
+            action="Unstage all"
+            busy={busy}
+            onAll={() => onUnstage(stagedPaths(staged))}
+            onFile={(f) => onUnstage(stagedPaths([f]))}
+            open={openIn('staged')}
+            onOpen={open('staged')}
+          />
+          <FileGroup
+            title="Changes"
+            tone="warn"
+            files={unstaged}
+            letter={(f) => f.worktree}
+            action="Stage all"
+            busy={busy}
+            onAll={() => onStage(unstaged.map((f) => f.path))}
+            onFile={(f) => onStage([f.path])}
+            open={openIn('unstaged')}
+            onOpen={open('unstaged')}
+          />
+          <FileGroup
+            title="Untracked"
+            files={untracked}
+            letter={() => '?'}
+            action="Stage all"
+            busy={busy}
+            onAll={() => onStage(untracked.map((f) => f.path))}
+            onFile={(f) => onStage([f.path])}
+            open={openIn('untracked')}
+            onOpen={open('untracked')}
+          />
+        </div>
+
+        <div className="commit-box">
+          <textarea
+            className="hud-input commit-message"
+            placeholder="Commit message"
+            value={message}
+            onChange={(event) => setMessage(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) void commit(false)
+            }}
+          />
+          <div className="commit-actions">
+            <span className="commit-hint">
+              {conflicts.length > 0 ? 'Resolve conflicts first' : staged.length === 0 ? 'Stage files to commit' : 'Ctrl+Enter commits'}
+            </span>
+            <button className="hud-btn" disabled={!canCommit} onClick={() => commit(false)}>
+              Commit
+            </button>
+            <button className="hud-btn primary" disabled={!canCommit || !canPush} onClick={() => commit(true)}>
+              Commit & push
+            </button>
+          </div>
         </div>
       </div>
+
+      {selected && (
+        <div className="changes-diff">
+          <DiffView
+            diff={diff}
+            error={error}
+            title={
+              <>
+                <span className="section-title">{GROUP_TITLES[selected.group]}</span>
+                <button className="icon-btn" onClick={() => setChosen(null)} title="Close diff (Esc)">
+                  ×
+                </button>
+              </>
+            }
+          />
+        </div>
+      )}
     </div>
   )
+}
+
+const GROUP_TITLES: Record<Group, string> = {
+  conflict: 'Conflict',
+  staged: 'Staged changes',
+  unstaged: 'Unstaged changes',
+  untracked: 'New file'
 }
 
 interface GroupProps {
@@ -124,9 +216,12 @@ interface GroupProps {
   busy: boolean
   onAll(): void
   onFile(file: FileChange): void
+  /** The file whose diff is open, if it is in this group. */
+  open: FileChange | undefined
+  onOpen(file: FileChange): void
 }
 
-function FileGroup({ title, tone, files, letter, checked, action, busy, onAll, onFile }: GroupProps) {
+function FileGroup({ title, tone, files, letter, checked, action, busy, onAll, onFile, open, onOpen }: GroupProps) {
   if (files.length === 0) return null
   return (
     <section className={`file-group${tone ? ` tone-${tone}` : ''}`}>
@@ -142,7 +237,7 @@ function FileGroup({ title, tone, files, letter, checked, action, busy, onAll, o
         {files.slice(0, MAX_ROWS).map((file) => {
           const code = letter(file)
           return (
-            <li key={`${file.path}:${code}`} className="file-row">
+            <li key={`${file.path}:${code}`} className={file === open ? 'file-row selected' : 'file-row'}>
               <button
                 className={`file-check${checked ? ' checked' : ''}`}
                 disabled={busy}
@@ -152,10 +247,14 @@ function FileGroup({ title, tone, files, letter, checked, action, busy, onAll, o
               <span className={`file-letter letter-${code === '?' ? 'u' : code}`} title={LETTER_NAMES[code] ?? code}>
                 {code}
               </span>
-              <span className="file-path" title={file.origPath ? `${file.origPath} → ${file.path}` : file.path}>
+              <button
+                className="file-path file-open"
+                onClick={() => onOpen(file)}
+                title={`${file.origPath ? `${file.origPath} → ${file.path}` : file.path} · show diff`}
+              >
                 {file.origPath && <span className="file-orig">{file.origPath} → </span>}
                 {file.path}
-              </span>
+              </button>
             </li>
           )
         })}

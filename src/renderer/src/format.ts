@@ -23,6 +23,11 @@ export function isOutOfSync(s: RepoStatus): boolean {
   return s.ahead > 0 || s.behind > 0
 }
 
+/** Safe to pull without asking: a clean working tree on a branch that only lacks remote commits. */
+export function canPullClean(s: RepoStatus): boolean {
+  return !!s.branch && !!s.upstream && s.behind > 0 && s.ahead === 0 && !isDirty(s) && !s.operation
+}
+
 export function pad2(n: number): string {
   return String(n).padStart(2, '0')
 }

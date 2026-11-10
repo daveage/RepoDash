@@ -16,7 +16,8 @@ const MAX_ENTRIES = 200
 /** Progress output of a long fetch can be large; the tail is what matters. */
 const MAX_TEXT = 100_000
 
-function errorMessage(error: unknown): string {
+/** An error from the main process without Electron's "Error invoking remote method" wrapping. */
+export function errorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error)
   return message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '')
 }

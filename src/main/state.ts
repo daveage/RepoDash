@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { RepoEntry, RepoMeta, Snapshot, Source } from '../shared/types'
+import type { RepoEntry, RepoMeta, Settings, Snapshot, Source } from '../shared/types'
 import { loadConfig, saveConfig, type Config } from './config'
 import { canonicalPath } from './git'
 import { DEFAULT_SCAN_DEPTH, scanFolder } from './scan'
@@ -14,7 +14,7 @@ export class State {
   constructor(private onChange: (snapshot: Snapshot) => void) {}
 
   snapshot(): Snapshot {
-    const { sources, hidden, order, meta } = this.config
+    const { sources, hidden, order, meta, settings } = this.config
     const hiddenSet = new Set(hidden)
     const entries = new Map<string, RepoEntry>()
     for (const source of sources) {
@@ -29,7 +29,7 @@ export class State {
       const byRank = (rank.get(a.path) ?? Infinity) - (rank.get(b.path) ?? Infinity)
       return byRank || a.path.localeCompare(b.path)
     })
-    return { sources, repos, hidden, meta, scanning: this.scansRunning > 0 }
+    return { sources, repos, hidden, meta, settings, scanning: this.scansRunning > 0 }
   }
 
   addRepo(path: string): void {
@@ -88,6 +88,11 @@ export class State {
     if (meta.color) clean.color = meta.color
     if (Object.keys(clean).length > 0) this.config.meta[path] = clean
     else delete this.config.meta[path]
+    this.commit()
+  }
+
+  setSettings(settings: Partial<Settings>): void {
+    this.config.settings = { ...this.config.settings, ...settings }
     this.commit()
   }
 

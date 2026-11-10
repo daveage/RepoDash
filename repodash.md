@@ -28,6 +28,8 @@ UI (<https://gmunk.com/Oblivion-GFX>).
 │  watcher   – .git/HEAD, index, refs changes   │
 │  ops queue – fetch/pull/push/checkout/...     │
 │              max ~6 parallel git processes    │
+│  autofetch – background fetch on a timer      │
+│  tray      – icon, badge, menu, notifications │
 │  config    – JSON in userData                 │
 └───────────────────────────────────────────────┘
 ```
@@ -43,7 +45,7 @@ UI (<https://gmunk.com/Oblivion-GFX>).
   on every change; the renderer only asks for git status per repository.
 - A folder scan walks up to *depth* levels (default 3), descends into repositories (nested clones are
   found), skips dot-folders, `node_modules` and similar, and does not follow symlinks or junctions.
-  A repository removed from a scanned folder is *hidden* and can be restored in Sources.
+  A repository removed from a scanned folder is *hidden* and can be restored in Settings.
 - Watcher (`src/main/watch.ts`): the git directory and `refs/` on every platform; the working tree
   recursively on Windows and macOS only (on Linux recursive watching costs an inotify watch per folder),
   so there working-tree edits show up when the window gets focus. Notifications are throttled per repository.
@@ -88,13 +90,38 @@ rebase/merge in progress: the panel shows a banner with the conflict count, conf
 Changes, then **Continue** (`rebase --continue` etc. with `core.editor=true`, which accepts git's message)
 or **Abort**.
 
+## Diffs (`src/main/diff.ts`, `src/renderer/src/DiffView.tsx`)
+
+- Changes: clicking a file opens its diff beside the lists — unstaged (`git diff`), staged (`git diff --cached`,
+  a rename with both paths), a conflict (git's combined diff). git has no diff for untracked files, so the main
+  process builds one (every line added; binary and files over 1 MB get a note; an untracked folder shows the
+  files inside it). Staging or unstaging the open file moves the diff along with it.
+- History: clicking a commit shows its message and changes (`git show`, a merge against its first parent, as the
+  graph draws it); Newer / Older or K / J step through the history, Esc returns to the list where it was.
+- Output is read with a 1 MB cap (`runGitCapped`), the view renders at most 6000 lines. Paths from the renderer
+  must resolve inside the repository; commit ids must be hex.
+
+## Bulk operations, background, tray
+
+- **Fetch all** and **Pull clean** in the header (Shift+F, Shift+U, also in the tray menu) run four repositories
+  at a time and report once in a notice. Pull clean only takes repositories that are clean, on a branch with an
+  upstream, behind and not ahead — the ones a fast-forward updates without a question.
+- **Auto fetch** (Settings → Background, off by default since it reaches the network): every 5–60 minutes the
+  main process fetches every repository, three at a time; a repository busy with the user's operation is skipped.
+- **Notifications**, only while the window does not have focus: commits that arrived on a branch's upstream
+  (collected for 2 s into one notification, clicking it opens the repository), an operation that finished or
+  failed, the end of a bulk operation.
+- **Tray**: reticle icon, with an amber dot while any repository has uncommitted changes; the tooltip and the menu
+  give the counts. The taskbar button (Windows overlay) or the dock (macOS, `setBadgeCount`) shows the same.
+  The renderer reports the counts (`ui:summary`); the tray menu and notifications send commands back (`ui:command`).
+
 ## Keyboard
 
 Arrows move between cards, Enter opens History, C / B / L open Changes / Branches / Console, F fetch,
-P pull, Shift+P push, R refresh (Shift+R all), `?` lists everything. In the panel 1–4 switch tabs; Esc
-leaves a text field first, then closes the panel. Space on a card header picks the card up for reordering
-(Enter does not, since it opens the card). Shortcuts click the same buttons, so they get the same checks
-and prompts.
+P pull, Shift+P push, Shift+F fetch all, Shift+U pull clean, R refresh (Shift+R all), `?` lists everything.
+In the panel 1–4 switch tabs, J / K step through commits in a commit diff; Esc leaves a text field first, then
+closes a diff, then the panel. Space on a card header picks the card up for reordering (Enter does not, since it
+opens the card). Shortcuts click the same buttons, so they get the same checks and prompts.
 
 ## Card
 
@@ -131,7 +158,7 @@ Per card: colour, alias, group/tag, pin, order — persisted.
 | 1 | Read-only dashboard: scan folders + single repos, cards, watcher refresh, drag reorder (by the card header, or keyboard: focus header, Space, arrows, Space), alias + colour, persistence, installer (electron-builder) | done |
 | 2 | Operations: fetch / pull / push / publish / switch + create branch (local and remote) / stage + commit (+ push) / stash + pop / abort merge-rebase; detail panel with history (branch colours + legend), changes, branches, console | done |
 | 3 | History tree layout (lanes, merge lines); pull with rebase or merge for diverged branches, continue after conflicts; start-up sequence, staggered card entrance, status-change glow, radar while an operation runs; keyboard navigation and shortcut overlay | done |
-| 4 | Extras: bulk ops ("pull all clean"), diff viewer, tray icon with dirty badge, notifications | |
+| 4 | Fetch all / pull clean; diff viewer for changes and commits; settings with auto fetch and notifications; tray icon with dirty badge, taskbar / dock badge; app icon | done |
 
 ## Development
 
@@ -141,7 +168,12 @@ npm run dev             # app with hot reload
 npm run build           # production build into out/
 npm run typecheck       # TypeScript check
 npm run dist            # installer for the current platform into dist/ (NSIS / dmg / AppImage)
+npm run icons           # render resources/*.svg into the committed PNGs (app, tray, badge icons)
 ```
+
+The PNGs in `resources/` are referenced from `out/main` at runtime (electron-vite `?asset`), so the
+installer includes `resources/*.png` next to `out/`. On Windows, notifications appear under the app id
+`com.repodash.app`, which the installer's Start menu shortcut carries; an unpackaged dev run may not show them.
 
 Settings live in `repodash.json` in the Electron `userData` directory (`%APPDATA%\RepoDash` on Windows,
 the same in dev and packaged builds thanks to `productName`). An unreadable file is copied to

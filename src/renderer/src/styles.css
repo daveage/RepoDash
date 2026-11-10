@@ -189,6 +189,12 @@ button {
   cursor: pointer;
 }
 
+.notice.tone-ok {
+  border-left-color: var(--cyan);
+  background: rgba(143, 230, 242, 0.05);
+  color: var(--cyan);
+}
+
 /* ---------- empty state ---------- */
 
 .empty {
@@ -737,6 +743,28 @@ button {
   margin: 0;
   color: var(--faint);
   font-size: 14px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 6px 0;
+}
+
+.setting-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.setting-name {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.setting-hint {
+  color: var(--dim);
+  font-size: 13px;
 }
 
 .source-row {

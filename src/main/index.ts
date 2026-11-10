@@ -1,11 +1,27 @@
-import { app, BrowserWindow, dialog, ipcMain, type IpcMainInvokeEvent } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Notification, type IpcMainInvokeEvent } from 'electron'
 import { statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import type { AddResult, Operation, RepoDetails, RepoMeta, Snapshot } from '../shared/types'
+import icon from '../../resources/icon.png?asset'
+import {
+  AUTO_FETCH_CHOICES,
+  type AddResult,
+  type DiffTarget,
+  type Notice,
+  type Operation,
+  type RepoDetails,
+  type RepoMeta,
+  type Settings,
+  type Snapshot,
+  type Summary,
+  type UiCommand
+} from '../shared/types'
+import { AutoFetch } from './autofetch'
+import { readDiff } from './diff'
 import { readChanges, readRepoStatus, resolveRepoRoot } from './git'
 import { readHistory, readRefs, toBranches } from './history'
 import { cancelOperation, runOperation } from './ops'
 import { State } from './state'
+import { StatusTray } from './tray'
 import { RepoWatcher } from './watch'
 
 function broadcast(channel: string, payload: unknown): void {
@@ -13,13 +29,42 @@ function broadcast(channel: string, payload: unknown): void {
 }
 
 const watcher = new RepoWatcher((path) => broadcast('repo:changed', path))
+// The watcher sees most of a fetch, but not one that only updated FETCH_HEAD; tell the renderer anyway.
+const autoFetch = new AutoFetch(
+  () => state.snapshot().repos.map((repo) => repo.path),
+  (path) => broadcast('repo:changed', path)
+)
 
 function publish(snapshot: Snapshot): void {
   watcher.sync(snapshot.repos.map((repo) => repo.path))
+  autoFetch.configure(snapshot.settings.autoFetchMinutes)
   broadcast('snapshot', snapshot)
 }
 
 let state: State
+let tray: StatusTray | null = null
+
+/** Brings the window back from the tray, the taskbar or (macOS) a closed state. */
+function showWindow(): void {
+  const win = BrowserWindow.getAllWindows()[0]
+  if (!win) return createWindow()
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+}
+
+/** Fetch all / pull clean from the tray run where the window is; opening a repository brings it up. */
+function command(command: UiCommand): void {
+  if (command.kind === 'open') showWindow()
+  broadcast('ui:command', command)
+}
+
+function notify({ title, body, path }: Notice): void {
+  if (!Notification.isSupported()) return
+  const notification = new Notification({ title, body })
+  notification.on('click', () => (path ? command({ kind: 'open', path }) : showWindow()))
+  notification.show()
+}
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -28,6 +73,7 @@ function createWindow(): void {
     minWidth: 640,
     minHeight: 480,
     title: 'RepoDash',
+    icon,
     backgroundColor: '#05080c',
     autoHideMenuBar: true,
     show: false,
@@ -144,6 +190,35 @@ function registerIpc(): void {
     return readHistory(expectString(path, 'path'), scope === 'current' ? 'current' : 'all', count)
   })
 
+  ipcMain.handle('repo:diff', (_event, path: unknown, target: unknown) => {
+    if (typeof target !== 'object' || target === null) throw new Error('target must be a diff target')
+    // readDiff checks every field: file paths stay inside the repository, hashes are hex.
+    return readDiff(expectString(path, 'path'), target as DiffTarget)
+  })
+
+  ipcMain.handle('settings:set', (_event, settings: unknown) => {
+    const { autoFetchMinutes, notifications } = (settings ?? {}) as Partial<Settings>
+    const clean: Partial<Settings> = {}
+    if (typeof autoFetchMinutes === 'number' && AUTO_FETCH_CHOICES.includes(autoFetchMinutes)) {
+      clean.autoFetchMinutes = autoFetchMinutes
+    }
+    if (typeof notifications === 'boolean') clean.notifications = notifications
+    state.setSettings(clean)
+    return state.snapshot()
+  })
+
+  ipcMain.on('ui:summary', (_event, summary: unknown) => {
+    const { dirty, outOfSync, pullable } = (summary ?? {}) as Summary
+    const count = (value: unknown) => (typeof value === 'number' && value >= 0 ? Math.round(value) : 0)
+    tray?.update({ dirty: count(dirty), outOfSync: count(outOfSync), pullable: count(pullable) })
+  })
+
+  ipcMain.on('ui:notify', (_event, notice: unknown) => {
+    const { title, body, path } = (notice ?? {}) as Notice
+    if (typeof title !== 'string' || typeof body !== 'string') return
+    notify({ title: title.slice(0, 120), body: body.slice(0, 400), path: typeof path === 'string' ? path : undefined })
+  })
+
   ipcMain.handle('op:run', async (event, path: unknown, op: unknown, opId: unknown) => {
     const repo = expectString(path, 'path')
     const id = expectString(opId, 'opId')
@@ -170,11 +245,16 @@ function registerIpc(): void {
   })
 }
 
+// Windows shows notifications under this id; the installer's Start menu shortcut carries the same one.
+app.setAppUserModelId('com.repodash.app')
+
 app.whenReady().then(async () => {
   state = new State(publish)
   registerIpc()
   await addCommandLineRepositories()
   createWindow()
+  tray = new StatusTray(showWindow, command)
+  publish(state.snapshot())
   void state.rescan()
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -185,4 +265,8 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
 
-app.on('will-quit', () => watcher.close())
+app.on('will-quit', () => {
+  watcher.close()
+  autoFetch.stop()
+  tray?.destroy()
+})

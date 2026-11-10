@@ -1,5 +1,5 @@
 import { useEffect } from 'react'
-import type { Snapshot } from '../../shared/types'
+import { AUTO_FETCH_CHOICES, type Snapshot } from '../../shared/types'
 import { pad2 } from './format'
 
 interface Props {
@@ -12,10 +12,12 @@ interface Props {
 
 const DEPTHS = [0, 1, 2, 3, 4, 5, 6]
 
-export function SourcesPanel({ snapshot, onAddFolder, onAddRepo, onClose, apply }: Props) {
+/** Sources (scan folders, single repositories, hidden ones) and the background settings. */
+export function SettingsPanel({ snapshot, onAddFolder, onAddRepo, onClose, apply }: Props) {
   const api = window.repodash
   const folders = snapshot.sources.filter((s) => s.kind === 'folder')
   const repos = snapshot.sources.filter((s) => s.kind === 'repo')
+  const { autoFetchMinutes, notifications } = snapshot.settings
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => event.key === 'Escape' && onClose()
@@ -27,7 +29,7 @@ export function SourcesPanel({ snapshot, onAddFolder, onAddRepo, onClose, apply 
     <div className="drawer-backdrop" onClick={onClose}>
       <aside className="drawer" onClick={(event) => event.stopPropagation()}>
         <header className="drawer-head">
-          <span className="drawer-title">Sources</span>
+          <span className="drawer-title">Settings</span>
           <button className="icon-btn" onClick={onClose} title="Close">
             ×
           </button>
@@ -110,6 +112,45 @@ export function SourcesPanel({ snapshot, onAddFolder, onAddRepo, onClose, apply 
             ))}
           </section>
         )}
+
+        <section className="drawer-section">
+          <div className="section-head">
+            <span className="section-title">Background</span>
+          </div>
+          <div className="setting-row">
+            <div className="setting-text">
+              <div className="setting-name">Auto fetch</div>
+              <div className="setting-hint">Fetches every repository, so cards show new remote commits without a click.</div>
+            </div>
+            <select
+              className="hud-select"
+              value={autoFetchMinutes}
+              onChange={(event) => apply(api.setSettings({ autoFetchMinutes: Number(event.target.value) }))}
+            >
+              {AUTO_FETCH_CHOICES.map((minutes) => (
+                <option key={minutes} value={minutes}>
+                  {minutes === 0 ? 'Off' : `Every ${minutes} min`}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="setting-row">
+            <div className="setting-text">
+              <div className="setting-name">Notifications</div>
+              <div className="setting-hint">
+                While RepoDash is in the background: new remote commits, and operations that finish or fail.
+              </div>
+            </div>
+            <div className="segmented">
+              <button className={notifications ? 'active' : ''} onClick={() => apply(api.setSettings({ notifications: true }))}>
+                On
+              </button>
+              <button className={notifications ? '' : 'active'} onClick={() => apply(api.setSettings({ notifications: false }))}>
+                Off
+              </button>
+            </div>
+          </div>
+        </section>
       </aside>
     </div>
   )

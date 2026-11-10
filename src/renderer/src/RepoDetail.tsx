@@ -229,6 +229,7 @@ export function RepoDetail(props: Props) {
         <div className="detail-body">
           {tab === 'history' && (
             <HistoryView
+              path={path}
               history={history}
               scope={scope}
               onScope={(next) => (setScope(next), setLimit(HISTORY_PAGE))}
@@ -237,6 +238,8 @@ export function RepoDetail(props: Props) {
           )}
           {tab === 'changes' && (
             <ChangesView
+              path={path}
+              stamp={stamp}
               files={files}
               busy={busy}
               canPush={!!status?.branch}
