@@ -114,6 +114,9 @@ or **Abort**.
 - **Tray**: reticle icon, with an amber dot while any repository has uncommitted changes; the tooltip and the menu
   give the counts. The taskbar button (Windows overlay) or the dock (macOS, `setBadgeCount`) shows the same.
   The renderer reports the counts (`ui:summary`); the tray menu and notifications send commands back (`ui:command`).
+- **Close to tray**: closing the window hides it (a balloon says so the first time on Windows); quitting is the
+  tray menu, Cmd+Q or the end of the session. A single-instance lock makes a second start show the running window
+  and add the directories given to it.
 
 ## Keyboard
 

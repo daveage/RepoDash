@@ -43,6 +43,8 @@ function publish(snapshot: Snapshot): void {
 
 let state: State
 let tray: StatusTray | null = null
+/** Set when RepoDash really quits (tray menu, Cmd+Q, end of the session); until then closing only hides. */
+let quitting = false
 
 /** Brings the window back from the tray, the taskbar or (macOS) a closed state. */
 function showWindow(): void {
@@ -86,6 +88,15 @@ function createWindow(): void {
   })
   win.once('ready-to-show', () => win.show())
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  // Closing keeps RepoDash in the tray, so auto fetch, notifications and the badge go on.
+  win.on('close', (event) => {
+    if (quitting) return
+    event.preventDefault()
+    win.hide()
+    tray?.hintOnce()
+  })
+  // Windows ends the session without `before-quit`; a hidden window must not hold up shutdown.
+  win.on('query-session-end', () => (quitting = true))
 
   if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) {
     win.loadURL(process.env.ELECTRON_RENDERER_URL)
@@ -103,9 +114,9 @@ function isDirectory(path: string): boolean {
 }
 
 /** Directories passed on the command line, e.g. `repodash C:\src\repo-a C:\src\repo-b`, become sources. */
-async function addCommandLineRepositories(): Promise<void> {
-  const args = process.argv.slice(app.isPackaged ? 1 : 2)
-  const dirs = args.filter((arg) => !arg.startsWith('-') && arg !== '.').map((arg) => resolve(arg))
+async function addCommandLineRepositories(argv: string[], cwd: string): Promise<void> {
+  const args = argv.slice(app.isPackaged ? 1 : 2)
+  const dirs = args.filter((arg) => !arg.startsWith('-') && arg !== '.').map((arg) => resolve(cwd, arg))
   for (const dir of dirs.filter(isDirectory)) {
     const root = await resolveRepoRoot(dir).catch(() => null)
     if (root) state.addRepo(root)
@@ -248,18 +259,30 @@ function registerIpc(): void {
 // Windows shows notifications under this id; the installer's Start menu shortcut carries the same one.
 app.setAppUserModelId('com.repodash.app')
 
-app.whenReady().then(async () => {
-  state = new State(publish)
-  registerIpc()
-  await addCommandLineRepositories()
-  createWindow()
-  tray = new StatusTray(showWindow, command)
-  publish(state.snapshot())
-  void state.rescan()
-  app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+// One RepoDash at a time: starting it again (e.g. from the taskbar while it sits in the tray) brings up
+// the running one, and directories given to the second start are added there.
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', (_event, argv, cwd) => {
+    showWindow()
+    if (state) void addCommandLineRepositories(argv, cwd)
   })
-})
+
+  app.whenReady().then(async () => {
+    state = new State(publish)
+    registerIpc()
+    await addCommandLineRepositories(process.argv, process.cwd())
+    createWindow()
+    tray = new StatusTray(showWindow, command)
+    publish(state.snapshot())
+    void state.rescan()
+    // macOS: clicking the dock icon brings back the hidden window.
+    app.on('activate', showWindow)
+  })
+}
+
+app.on('before-quit', () => (quitting = true))
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

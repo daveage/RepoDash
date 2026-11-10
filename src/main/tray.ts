@@ -29,6 +29,7 @@ export class StatusTray {
   private icons = { plain: image(tray1x, tray2x), badge: image(badge1x, badge2x) }
   private overlay = image(overlay1x, overlay2x)
   private summary: Summary = { dirty: 0, outOfSync: 0, pullable: 0 }
+  private hinted = false
 
   constructor(
     private show: () => void,
@@ -48,6 +49,17 @@ export class StatusTray {
 
   destroy(): void {
     this.tray.destroy()
+  }
+
+  /** The first time the window closes to the tray, say where RepoDash went (Windows balloon). */
+  hintOnce(): void {
+    if (this.hinted || process.platform !== 'win32') return
+    this.hinted = true
+    this.tray.displayBalloon({
+      title: 'RepoDash is still running',
+      content: 'It keeps watching your repositories here. Quit it from this icon’s menu.',
+      icon: this.icons.plain
+    })
   }
 
   private render(): void {
