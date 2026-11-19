@@ -23,13 +23,27 @@ function configFile(): string {
   return join(app.getPath('userData'), 'repodash.json')
 }
 
+/**
+ * Earlier builds ran under the package name `repodash` (`productName` was only in the build config), so on
+ * Linux, where paths are case-sensitive, their settings are in `~/.config/repodash`. They are read from there
+ * once; the next save writes them to the new place.
+ */
+function legacyConfigFile(): string {
+  return join(app.getPath('appData'), 'repodash', 'repodash.json')
+}
+
 export function loadConfig(): Config {
-  const file = configFile()
+  let file = configFile()
   let text: string
   try {
     text = readFileSync(file, 'utf8')
   } catch {
-    return emptyConfig()
+    try {
+      file = legacyConfigFile()
+      text = readFileSync(file, 'utf8')
+    } catch {
+      return emptyConfig()
+    }
   }
   try {
     const parsed = JSON.parse(text)

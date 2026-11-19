@@ -1,5 +1,7 @@
 {
   "name": "repodash",
+  "productName": "RepoDash",
+  "desktopName": "RepoDash.desktop",
   "version": "0.1.0",
   "private": true,
   "description": "Dashboard of locally cloned git repositories",
@@ -34,7 +36,6 @@
   },
   "build": {
     "appId": "com.repodash.app",
-    "productName": "RepoDash",
     "icon": "resources/icon.png",
     "directories": {
       "output": "dist"
@@ -52,7 +53,8 @@
     },
     "linux": {
       "target": "AppImage",
-      "category": "Development"
+      "category": "Development",
+      "syncDesktopName": true
     },
     "nsis": {
       "oneClick": false,

@@ -195,6 +195,12 @@ Settings live in `repodash.json` in the Electron `userData` directory (`%APPDATA
 the same in dev and packaged builds thanks to `productName`). An unreadable file is copied to
 `repodash.json.bad` before the app starts with empty settings.
 
+`productName` and `desktopName` sit at the top of `package.json`, not only in the build config: Electron takes
+the app name from the packaged `package.json`, and on Linux that name is the window's `WM_CLASS` and the
+`desktopName` its Wayland app id. Both must match the `StartupWMClass` of the `.desktop` file electron-builder
+writes (`linux.syncDesktopName`), or Linux panels do not connect the window to its launcher and show a generic
+icon. Builds before this ran as `repodash`; their Linux settings in `~/.config/repodash` are read once.
+
 In this Dropbox folder Windows sometimes briefly locks freshly written folders (virus scan / indexing):
 `npm run dist` may fail with `EBUSY`/`EPERM` while renaming `dist\win-unpacked.tmp`, and Vite may print
 `EBUSY` while optimizing dependencies. Both are transient — run the command again.
