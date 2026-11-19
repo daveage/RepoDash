@@ -28,6 +28,8 @@ Windows, macOS and Linux (Electron). RepoDash runs your own `git`, so credential
 - **History** with a commit graph: every branch has its own colour, and the legend picks one out.
 - **Diffs** of unstaged, staged, conflicted and new files, and of any commit in the history. Changes without
   visible text (line endings only, file mode, a pure rename) say so. Drag the panel's left edge to widen it.
+- **For coding agents** — an agent runs `RepoDash --open <repository>` and you get that repository's panel with
+  the diff of what it just did; scratch clones it deletes leave the dashboard by themselves.
 - **Fetch all** and **Pull clean** — update every repository that has no local changes and is only behind.
 - **Background** — optional auto fetch every 5–60 minutes, desktop notifications for new remote commits and
   finished operations while RepoDash is in the background, a tray icon and a taskbar / dock badge while any
@@ -83,8 +85,35 @@ Directories passed on the command line are added as repositories: `RepoDash ~/sr
 
 `RepoDash --open <dir>` shows the panel of the repository that holds `<dir>`, on Changes or on the tab given
 with `--tab=history|changes|branches|console`; a repository the dashboard does not list yet is added. A running
-RepoDash takes the request and comes to the front, so a script, an editor task or a coding agent can show you the
-repository it has just changed.
+RepoDash takes the request and comes to the front. See the next section for what that is good for.
+
+### Reviewing a coding agent's work
+
+When a coding agent (Claude Code, Cursor, Codex…) has finished changing a repository, ask it to *show the changes
+in RepoDash*: RepoDash comes to the front with that repository's panel open on Changes, where you read the diff,
+discard what you do not want, stage and commit — or open History when the agent committed the work itself.
+
+The agent only has to run RepoDash with `--open`; it needs to know how, once:
+
+- **Claude Code:** copy [`agents/repodash-open`](agents/repodash-open/SKILL.md) to `~/.claude/skills/` (for
+  every project) or to a project's `.claude/skills/`. The skill tells the agent which repository to open and
+  gives the command for each platform. Then "open it in RepoDash" is enough.
+- **Other agents:** put the command in the agent's instructions (`AGENTS.md`, a Cursor rule), e.g.
+  *"When I ask to see your changes in RepoDash, run
+  `Start-Process "$env:LOCALAPPDATA\Programs\RepoDash\RepoDash.exe" -ArgumentList '--open "<repository>"'`."*
+  On macOS that is `open -n -a RepoDash --args --open <repository>`.
+
+Two details the skill takes care of, and any script should too:
+
+- Start RepoDash detached (`Start-Process`, `start`, `open`, `setsid`): when it is not running yet, the call
+  would otherwise wait until you quit it.
+- A shell started from VS Code or Cursor carries `ELECTRON_RUN_AS_NODE=1`, which makes any Electron app,
+  RepoDash included, start as plain Node and do nothing. Clear it for the call.
+
+Agents often work in a scratch clone that they push and then delete. A repository that came in through
+`--open`, or that lies in the system's temp folder, leaves the dashboard by itself once its folder is gone
+(with its section, if it was the last one in it). A repository you added yourself stays and says
+"Folder not found", so that you decide.
 
 ### Keyboard
 

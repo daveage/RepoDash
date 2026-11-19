@@ -230,6 +230,8 @@ scanned repository is not added a second time, and adds the repository only when
 start hands its arguments to the running RepoDash as the single-instance lock's additional data, because the
 `argv` of `second-instance` comes reordered and with `--open <dir>` split apart. Commands reach the renderer once
 it says `ui:ready`; the renderer keeps an `open` until the snapshot lists the repository.
+`agents/repodash-open/SKILL.md` is the Claude Code skill that teaches an agent this command; change it together
+with the command line.
 
 Deleted repositories (`State.forgetMissing`, called before every status read): when a repository's folder or
 its `.git/HEAD` is gone but its drive is there (an offline network drive forgets nothing), a folder scan drops
