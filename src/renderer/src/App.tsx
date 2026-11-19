@@ -1,22 +1,12 @@
-import {
-  closestCenter,
-  DndContext,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-  type KeyboardCodes
-} from '@dnd-kit/core'
-import { arrayMove, rectSortingStrategy, SortableContext, sortableKeyboardCoordinates } from '@dnd-kit/sortable'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AddResult, Notice, Operation, RepoResult, Snapshot, UiCommand } from '../../shared/types'
+import { Board } from './Board'
 import { Boot, prefersReducedMotion } from './Boot'
 import { CardConfig } from './CardConfig'
 import { baseName, canPullClean, defaultAccent, isDirty, isOutOfSync, pad2 } from './format'
 import { useOperations } from './operations'
 import { actionForKey, clickAction, dialogOpen, hasModifier, isTypingTarget } from './keys'
-import { RepoCard } from './RepoCard'
+import { RepoCard, RepoCardPreview } from './RepoCard'
 import { RepoDetail, type DetailTab } from './RepoDetail'
 import { SettingsPanel } from './SettingsPanel'
 import { Shortcuts } from './Shortcuts'
@@ -30,9 +20,6 @@ const BULK_PARALLEL = 4
 /** New remote commits found within this window (one background fetch round) make one notification. */
 const NEWS_DELAY_MS = 2000
 const OK_NOTICE_MS = 8000
-
-// Enter opens a card, so only Space picks one up for keyboard reordering.
-const DRAG_KEYS: KeyboardCodes = { start: ['Space'], cancel: ['Escape'], end: ['Space', 'Enter'] }
 
 interface Bulk {
   label: string
@@ -55,6 +42,7 @@ export function App() {
   const [booting, setBooting] = useState(() => !prefersReducedMotion())
   const [showHelp, setShowHelp] = useState(false)
   const [bulk, setBulk] = useState<Bulk | null>(null)
+  const [renaming, setRenaming] = useState<string | null>(null)
   const operations = useOperations()
   const dragging = useRef(false)
 
@@ -276,26 +264,15 @@ export function App() {
     return () => clearTimeout(timer)
   }, [notice])
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates, keyboardCodes: DRAG_KEYS })
-  )
+  /** A new, empty section at the end of the board, with its name ready to type. */
+  const createSection = useCallback(async () => {
+    const before = new Set(snapshotRef.current?.sections.map((section) => section.id))
+    const next = await api.editSections({ kind: 'create', name: 'New section' })
+    applySnapshot(next)
+    setRenaming(next.sections.find((section) => !before.has(section.id))?.id ?? null)
+  }, [applySnapshot])
 
-  const handleDragEnd = useCallback(
-    ({ active, over }: DragEndEvent) => {
-      dragging.current = false
-      const current = snapshotRef.current
-      if (!current || !over || active.id === over.id) return
-      const paths = current.repos.map((repo) => repo.path)
-      const order = arrayMove(paths, paths.indexOf(String(active.id)), paths.indexOf(String(over.id)))
-      // Move the cards now; the main process confirms with the same order.
-      const byPath = new Map(current.repos.map((repo) => [repo.path, repo]))
-      applySnapshot({ ...current, repos: order.map((path) => byPath.get(path)!) })
-      apply(api.setOrder(order))
-    },
-    [apply, applySnapshot]
-  )
-
+  const onDragging = useCallback((value: boolean) => (dragging.current = value), [])
   const endBoot = useCallback(() => setBooting(false), [])
 
   // Grid keys; the panel and dialogs handle their own while open.
@@ -309,21 +286,25 @@ export function App() {
       if (event.key === 'F') return void fetchAll()
       if (event.key === 'U') return void pullClean()
 
-      const cards = [...document.querySelectorAll<HTMLElement>('.grid .card')]
+      // Cards of collapsed sections are not in the page; the ones that are carry their path.
+      const cards = [...document.querySelectorAll<HTMLElement>('.board .card')]
       if (cards.length === 0) return
       const index = cards.findIndex((card) => card.contains(document.activeElement))
-      const columns = cards.filter((card) => card.offsetTop === cards[0].offsetTop).length
-      const steps: Record<string, number> = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: columns, ArrowUp: -columns }
-      if (event.key in steps || event.key === 'Home' || event.key === 'End') {
+      if (['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) {
         event.preventDefault()
-        const target =
-          event.key === 'Home' ? 0 : event.key === 'End' ? cards.length - 1 : index < 0 ? 0 : index + steps[event.key]
-        cards[Math.max(0, Math.min(cards.length - 1, target))].focus()
+        const next =
+          index < 0 || event.key === 'Home'
+            ? cards[0]
+            : event.key === 'End'
+              ? cards[cards.length - 1]
+              : event.key === 'ArrowRight' || event.key === 'ArrowLeft'
+                ? cards[index + (event.key === 'ArrowRight' ? 1 : -1)]
+                : cardBelow(cards, cards[index], event.key === 'ArrowDown')
+        next?.focus()
         return
       }
       if (index < 0) return
-      // Cards render in the snapshot's order.
-      const path = current.repos[index]?.path
+      const path = cards[index].dataset.path
       if (!path) return
       const tabs: Record<string, DetailTab> = { Enter: 'history', c: 'changes', b: 'branches', l: 'console' }
       if (event.key in tabs) {
@@ -356,6 +337,19 @@ export function App() {
   if (!snapshot) return <div className="app" />
 
   const folderIds = new Set(snapshot.sources.filter((s) => s.kind === 'folder').map((s) => s.id))
+  const cardProps = (path: string, index: number) => ({
+    path,
+    index,
+    result: results[path],
+    meta: snapshot.meta[path],
+    busy: busy.has(path),
+    opBusy: operations.isRunning(path),
+    lastOp: operations.entries.findLast((entry) => entry.path === path),
+    run: (op: Operation, label: string) => run(path, op, label),
+    onOpen: (tab: DetailTab) => setDetail({ path, tab }),
+    onRefresh: () => refresh(path),
+    onConfigure: () => setConfiguring(path)
+  })
 
   return (
     <div className={booting ? 'app' : 'app booted'}>
@@ -387,6 +381,14 @@ export function App() {
             title="Fast-forward every repository without local changes or commits that is behind (Shift+U)"
           >
             {bulk?.label === 'Pull clean' ? `Pulling ${bulk.done}/${bulk.total}` : `Pull clean${pullable ? ` ▼${pad2(pullable)}` : ''}`}
+          </button>
+          <button
+            className="hud-btn"
+            onClick={createSection}
+            disabled={paths.length === 0}
+            title="New section; drag repositories into it"
+          >
+            + Section
           </button>
           <button className="hud-btn" onClick={() => setShowSettings(true)}>
             Settings
@@ -420,49 +422,45 @@ export function App() {
           </div>
         </div>
       ) : (
-        <DndContext
-          sensors={sensors}
-          collisionDetection={closestCenter}
-          onDragStart={() => (dragging.current = true)}
-          onDragCancel={() => (dragging.current = false)}
-          onDragEnd={handleDragEnd}
-        >
-          <SortableContext items={paths} strategy={rectSortingStrategy}>
-            <main className="grid">
-              {snapshot.repos.map(({ path, sourceId }, index) => (
-                <RepoCard
-                  key={path}
-                  path={path}
-                  index={index}
-                  result={results[path]}
-                  meta={snapshot.meta[path]}
-                  busy={busy.has(path)}
-                  opBusy={operations.isRunning(path)}
-                  lastOp={operations.entries.findLast((entry) => entry.path === path)}
-                  run={(op, label) => run(path, op, label)}
-                  onOpen={(tab) => setDetail({ path, tab })}
-                  onRefresh={() => refresh(path)}
-                  onConfigure={() => setConfiguring(path)}
-                  overlay={
-                    configuring === path && (
-                      <CardConfig
-                        path={path}
-                        meta={snapshot.meta[path]}
-                        scanned={folderIds.has(sourceId)}
-                        onSave={(meta) => apply(api.setMeta(path, meta))}
-                        onRemove={() => {
-                          setConfiguring(null)
-                          apply(api.removeRepo(path))
-                        }}
-                        onClose={closeConfig}
-                      />
-                    )
-                  }
-                />
-              ))}
-            </main>
-          </SortableContext>
-        </DndContext>
+        <Board
+          snapshot={snapshot}
+          renaming={renaming}
+          onRenaming={setRenaming}
+          onDragging={onDragging}
+          applySnapshot={applySnapshot}
+          renderPreview={(path) => <RepoCardPreview {...cardProps(path, 0)} />}
+          renderCard={(path, index) => {
+            const entry = snapshot.repos.find((repo) => repo.path === path)
+            return (
+              <RepoCard
+                key={path}
+                {...cardProps(path, index)}
+                overlay={
+                  configuring === path &&
+                  entry && (
+                    <CardConfig
+                      path={path}
+                      meta={snapshot.meta[path]}
+                      scanned={folderIds.has(entry.sourceId)}
+                      sections={snapshot.sections}
+                      section={entry.section}
+                      home={entry.home}
+                      onSave={(meta, section) => {
+                        apply(api.setMeta(path, meta))
+                        if (section !== entry.section) apply(api.placeRepo(path, section, paths))
+                      }}
+                      onRemove={() => {
+                        setConfiguring(null)
+                        apply(api.removeRepo(path))
+                      }}
+                      onClose={closeConfig}
+                    />
+                  )
+                }
+              />
+            )
+          }}
+        />
       )}
 
       {detail && snapshot.repos.some((repo) => repo.path === detail.path) && (
@@ -498,6 +496,20 @@ export function App() {
       )}
     </div>
   )
+}
+
+/** The card in the next row down (or up), the one closest to the same column; rows run on across sections. */
+function cardBelow(cards: HTMLElement[], from: HTMLElement, down: boolean): HTMLElement | undefined {
+  const origin = from.getBoundingClientRect()
+  let best: { card: HTMLElement; dy: number; dx: number } | undefined
+  for (const card of cards) {
+    const rect = card.getBoundingClientRect()
+    const dy = down ? rect.top - origin.top : origin.top - rect.top
+    if (dy <= 1) continue
+    const dx = Math.abs(rect.left - origin.left)
+    if (!best || dy < best.dy - 1 || (Math.abs(dy - best.dy) <= 1 && dx < best.dx)) best = { card, dy, dx }
+  }
+  return best?.card
 }
 
 function Stat({ label, value, warn }: { label: string; value: number; warn?: boolean }) {

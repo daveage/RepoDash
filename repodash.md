@@ -154,7 +154,24 @@ Clicking the branch line opens the detail panel on Branches, the counts on Chang
 History, the operation status in the footer on Console. Pull/Push show the counts they would move and
 turn amber when there is something to move; Push becomes Publish for a branch without upstream.
 
-Per card: colour, alias, group/tag, pin, order — persisted.
+Per card: colour, alias, section, order — persisted.
+
+## Sections (`src/main/state.ts`, `src/renderer/src/Board.tsx`)
+
+- Every repository has a default section: the scan folder it was found in (`source:<id>`), or for a single
+  repository the folder that holds it (`dir:<folder>`), named after that folder. The user adds sections of their
+  own (`custom:<uuid>`, **+ Section**) and moves a repository into any section by dragging its card there or in
+  the card's ⋯ settings; `meta.section` remembers it, and a section that disappears sends it back home.
+- Sections are renamed (click the name), collapsed and moved up / down; `config.sections` lists them in the
+  user's order with these settings, default sections only once they were moved, renamed or collapsed. A default
+  section without repositories is not shown; a section of the user's shows "Drag repositories here". Deleting it
+  returns its repositories to their default sections.
+- Suggestions: in a scan folder's section, a subfolder holding two or more of its repositories (but not all) is
+  offered as a section of its own (**Group by folder**: one, all, or dismiss, remembered in `config.dismissed`).
+- One global `order` ranks repositories; a section shows its own in that order. Dragging uses one dnd-kit context
+  with a sortable list per section: a card moves into another section as soon as it is over it, a collapsed
+  section takes it at the end on drop, and a drag overlay follows the pointer while the card's place shows a
+  faded placeholder. Arrow keys move between cards by position on screen, across sections.
 
 ## Visual language (Oblivion)
 

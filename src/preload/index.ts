@@ -21,7 +21,8 @@ const api: RepoDashApi = {
 
   removeRepo: (path) => ipcRenderer.invoke('repo:remove', path),
   restoreRepo: (path) => ipcRenderer.invoke('repo:restore', path),
-  setOrder: (paths) => ipcRenderer.invoke('repo:set-order', paths),
+  placeRepo: (path, section, order) => ipcRenderer.invoke('repo:place', path, section, order),
+  editSections: (edit) => ipcRenderer.invoke('section:edit', edit),
   setMeta: (path, meta) => ipcRenderer.invoke('repo:set-meta', path, meta),
   setSettings: (settings) => ipcRenderer.invoke('settings:set', settings),
 

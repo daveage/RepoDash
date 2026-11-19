@@ -14,6 +14,9 @@ Windows, macOS and Linux (Electron). RepoDash runs your own `git`, so credential
 
 - **Cards** for each repository: one-word state (synced, behind, diverged, uncommitted, conflict…), counts,
   last commit. Drag cards to reorder them, give each one a colour and an alias.
+- **Sections** — every scan folder starts as one section; add your own, rename, collapse and move them up or
+  down, and drag cards between them. When several repositories share a subfolder (`apps/`, `infra/`…),
+  RepoDash offers to make it a section.
 - **Live status** — a file watcher refreshes a card when something changes, also when you work in a terminal or
   an editor. Nothing runs while nothing changes.
 - **Sources** — add a folder to scan for repositories (depth-limited, nested clones included) or single

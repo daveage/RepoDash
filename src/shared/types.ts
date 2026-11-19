@@ -42,12 +42,53 @@ export interface Source {
 export interface RepoMeta {
   alias?: string
   color?: string
+  /** The section the user moved the repository to; without one it stays in its default section. */
+  section?: string
 }
 
 export interface RepoEntry {
   path: string
   sourceId: string
+  /** The section it is shown in. */
+  section: string
+  /** Its default section: the scan folder's, or for a single repository the folder that holds it. */
+  home: string
 }
+
+/**
+ * A group of cards. Every scan folder has a default section (`source:<id>`), single repositories one per
+ * folder that holds them (`dir:<folder>`); the user adds their own (`custom:<id>`).
+ */
+export interface Section {
+  id: string
+  name: string
+  /** Default sections: the folder their repositories come from. */
+  path?: string
+  /** Made by the user: it can be deleted and stays on the board when empty. */
+  custom: boolean
+  collapsed: boolean
+  /** Its repositories, in the order the user arranged them. */
+  repos: string[]
+  /** Default sections of scan folders: subfolders holding two or more of the section's repositories. */
+  suggestions: SectionSuggestion[]
+}
+
+export interface SectionSuggestion {
+  /** The subfolder; dismissing the suggestion remembers it. */
+  path: string
+  name: string
+  repos: string[]
+}
+
+export type SectionEdit =
+  /** A new section after `after` (or last), with `repos` moved into it. */
+  | { kind: 'create'; name: string; after?: string; repos?: string[] }
+  | { kind: 'rename'; id: string; name: string }
+  | { kind: 'move'; id: string; by: -1 | 1 }
+  /** Sections made by the user only; their repositories go back to their default sections. */
+  | { kind: 'delete'; id: string }
+  | { kind: 'collapse'; id: string; collapsed: boolean }
+  | { kind: 'dismiss'; id: string; paths: string[] }
 
 export interface Settings {
   /** Minutes between background fetches of every repository; 0 turns them off. */
@@ -60,8 +101,10 @@ export const AUTO_FETCH_CHOICES = [0, 5, 15, 30, 60]
 /** Everything the renderer shows apart from git status, pushed by the main process on every change. */
 export interface Snapshot {
   sources: Source[]
-  /** Ordered as the user arranged them; newly found repositories go last. */
+  /** In the user's order, every section's repositories in turn; newly found repositories go last. */
   repos: RepoEntry[]
+  /** In the user's order, including default sections that are empty. */
+  sections: Section[]
   /** Repositories found by a folder scan that the user removed from the dashboard. */
   hidden: string[]
   meta: Record<string, RepoMeta>
@@ -224,7 +267,9 @@ export interface RepoDashApi {
 
   removeRepo(path: string): Promise<Snapshot>
   restoreRepo(path: string): Promise<Snapshot>
-  setOrder(paths: string[]): Promise<Snapshot>
+  /** Puts a repository into a section; `order` is the new order of all repositories. */
+  placeRepo(path: string, section: string, order: string[]): Promise<Snapshot>
+  editSections(edit: SectionEdit): Promise<Snapshot>
   setMeta(path: string, meta: RepoMeta): Promise<Snapshot>
   setSettings(settings: Partial<Settings>): Promise<Snapshot>
 

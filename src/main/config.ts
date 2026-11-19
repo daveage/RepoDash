@@ -10,13 +10,36 @@ export interface Config {
   order: string[]
   meta: Record<string, RepoMeta>
   settings: Settings
+  /**
+   * Sections in the user's order. A section the user made is always listed; a default section once it has
+   * been moved, renamed or collapsed (the others follow in the order of the sources).
+   */
+  sections: SectionConfig[]
+  /** Dismissed section suggestions: `<section id>|<folder>`. */
+  dismissed: string[]
+}
+
+export interface SectionConfig {
+  id: string
+  /** The name of a section the user made; for a default section, the name the user gave it. */
+  name?: string
+  collapsed?: boolean
 }
 
 // Background fetches reach the network, so they wait until the user turns them on.
 const DEFAULT_SETTINGS: Settings = { autoFetchMinutes: 0, notifications: true }
 
 function emptyConfig(): Config {
-  return { version: 1, sources: [], hidden: [], order: [], meta: {}, settings: { ...DEFAULT_SETTINGS } }
+  return {
+    version: 1,
+    sources: [],
+    hidden: [],
+    order: [],
+    meta: {},
+    settings: { ...DEFAULT_SETTINGS },
+    sections: [],
+    dismissed: []
+  }
 }
 
 function configFile(): string {

@@ -1,5 +1,5 @@
 import { useEffect, useState, type CSSProperties } from 'react'
-import type { RepoMeta } from '../../shared/types'
+import type { RepoMeta, Section } from '../../shared/types'
 import { ACCENTS, baseName, defaultAccent } from './format'
 
 interface Props {
@@ -7,14 +7,21 @@ interface Props {
   meta: RepoMeta | undefined
   /** True when the repository came from a folder scan, so removing it only hides it. */
   scanned: boolean
-  onSave(meta: RepoMeta): void
+  sections: Section[]
+  /** The section the repository is in, and its default one. */
+  section: string
+  home: string
+  onSave(meta: RepoMeta, section: string): void
   onRemove(): void
   onClose(): void
 }
 
-export function CardConfig({ path, meta, scanned, onSave, onRemove, onClose }: Props) {
+export function CardConfig({ path, meta, scanned, sections, section, home, onSave, onRemove, onClose }: Props) {
   const [alias, setAlias] = useState(meta?.alias ?? '')
   const [color, setColor] = useState(meta?.color)
+  const [target, setTarget] = useState(section)
+  // Empty default sections are not on the board, but the repository's own one is always a choice.
+  const choices = sections.filter((s) => s.custom || s.repos.length > 0 || s.id === home)
   const auto = defaultAccent(baseName(path))
 
   useEffect(() => {
@@ -24,7 +31,7 @@ export function CardConfig({ path, meta, scanned, onSave, onRemove, onClose }: P
   }, [onClose])
 
   const save = () => {
-    onSave({ alias, color })
+    onSave({ alias, color }, target)
     onClose()
   }
 
@@ -75,6 +82,18 @@ export function CardConfig({ path, meta, scanned, onSave, onRemove, onClose }: P
           </label>
         </div>
       </div>
+
+      <label className="field">
+        <span className="field-label">Section</span>
+        <select className="hud-select" value={target} onChange={(event) => setTarget(event.target.value)}>
+          {choices.map((choice) => (
+            <option key={choice.id} value={choice.id}>
+              {choice.name}
+              {choice.id === home ? ' (default)' : ''}
+            </option>
+          ))}
+        </select>
+      </label>
 
       <div className="config-actions">
         <button className="hud-btn danger" onClick={onRemove} title={scanned ? 'Restore it in Sources' : undefined}>

@@ -225,13 +225,169 @@ button {
   text-transform: uppercase;
 }
 
-/* ---------- card grid ---------- */
+/* ---------- sections and the card grid ---------- */
+
+.board {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+  padding: 22px 28px 40px;
+}
+
+.section.drop-target .section-head {
+  color: var(--cyan);
+}
+
+.section.drop-target .section-rule {
+  background: var(--cyan);
+  box-shadow: 0 0 8px rgba(143, 230, 242, 0.5);
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 30px;
+  margin-bottom: 14px;
+  color: var(--dim);
+}
+
+.section.collapsed .section-head {
+  margin-bottom: 0;
+}
+
+.section-toggle {
+  width: 18px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.section-name {
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  cursor: text;
+}
+
+.section-name:hover,
+.section-toggle:hover {
+  color: var(--cyan);
+}
+
+.section-input {
+  width: 260px;
+  padding: 3px 8px;
+  font-size: 14px;
+}
+
+.section-count {
+  color: var(--cyan);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.section-path {
+  min-width: 0;
+  max-width: 40%;
+  color: var(--faint);
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  direction: rtl;
+  text-align: left;
+}
+
+/* A tick-mark rule from the title to the tools. */
+.section-rule {
+  flex: 1;
+  min-width: 20px;
+  height: 1px;
+  background: var(--line);
+}
+
+.section-tools {
+  display: flex;
+  gap: 2px;
+}
+
+.section-tools .icon-btn {
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+  opacity: 0.45;
+}
+
+.section-tools .section-delete:hover {
+  color: var(--red);
+}
+
+.section-head:hover .section-tools .icon-btn:not(:disabled),
+.section-tools .icon-btn:focus-visible {
+  opacity: 1;
+}
+
+.section-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: -4px 0 16px 28px;
+}
+
+.suggest-label {
+  margin-right: 4px;
+  color: var(--dim);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.suggest-chip {
+  border-style: dashed;
+}
+
+.suggest-count {
+  margin-left: 4px;
+  color: var(--cyan);
+  font-family: var(--mono);
+  letter-spacing: 0;
+}
 
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   gap: 22px;
-  padding: 26px 28px 40px;
+}
+
+.section-empty {
+  grid-column: 1 / -1;
+  padding: 26px;
+  border: 1px dashed var(--line);
+  color: var(--faint);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.section.drop-target .section-empty {
+  border-color: var(--cyan);
+  color: var(--cyan);
 }
 
 .card {
@@ -530,8 +686,13 @@ button {
   outline-offset: 4px;
 }
 
-.card.is-dragging {
-  z-index: 5;
+/* Where the dragged card will land. */
+.card.is-placeholder {
+  opacity: 0.25;
+}
+
+/* The card under the pointer. */
+.card.is-lifted {
   cursor: grabbing;
   border-color: var(--line-strong);
   background: rgba(10, 18, 24, 0.96);

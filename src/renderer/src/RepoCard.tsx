@@ -1,6 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import type { CSSProperties, ReactNode } from 'react'
+import type { CSSProperties, HTMLAttributes, ReactNode } from 'react'
 import type { Operation, RepoMeta, RepoResult, RepoStatus } from '../../shared/types'
 import { baseName, defaultAccent, pad2, relativeTime, summarize } from './format'
 import type { ConsoleEntry } from './operations'
@@ -27,28 +27,51 @@ interface Props {
 }
 
 export function RepoCard(props: Props) {
-  const { path, index, result, meta, busy, opBusy, lastOp, run, onOpen, onRefresh, onConfigure, overlay } = props
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
-    id: path
+    id: props.path
   })
+  return (
+    <CardFrame
+      {...props}
+      frameRef={setNodeRef}
+      handleRef={setActivatorNodeRef}
+      handleProps={{ ...attributes, ...listeners }}
+      motion={{ transform: CSS.Translate.toString(transform), transition }}
+      state={isDragging ? 'is-placeholder' : undefined}
+    />
+  )
+}
+
+/** The card under the pointer while one is dragged; the card itself stays behind as a placeholder. */
+export function RepoCardPreview(props: Props) {
+  return <CardFrame {...props} state="is-lifted" />
+}
+
+interface FrameProps extends Props {
+  frameRef?(element: HTMLElement | null): void
+  handleRef?(element: HTMLElement | null): void
+  handleProps?: HTMLAttributes<HTMLElement>
+  motion?: CSSProperties
+  state?: 'is-placeholder' | 'is-lifted'
+}
+
+function CardFrame(props: FrameProps) {
+  const { path, index, result, meta, busy, opBusy, lastOp, run, onOpen, onRefresh, onConfigure, overlay } = props
+  const { frameRef, handleRef, handleProps, motion, state } = props
   const dirName = result?.ok ? result.status.name : baseName(path)
   const name = meta?.alias ?? dirName
   const summary = result?.ok ? summarize(result.status) : result ? { label: 'error', tone: 'alert' as const } : null
-  const style = {
-    '--accent': meta?.color ?? defaultAccent(dirName),
-    '--i': index,
-    transform: CSS.Translate.toString(transform),
-    transition
-  } as CSSProperties
-  const classes = ['card', `tone-${summary?.tone ?? 'idle'}`, (busy || opBusy) && 'is-busy', isDragging && 'is-dragging']
+  const style = { '--accent': meta?.color ?? defaultAccent(dirName), '--i': index, ...motion } as CSSProperties
+  const classes = ['card', `tone-${summary?.tone ?? 'idle'}`, (busy || opBusy) && 'is-busy', state]
 
   return (
     <article
-      ref={setNodeRef}
+      ref={frameRef}
       className={classes.filter(Boolean).join(' ')}
       style={style}
       tabIndex={0}
       aria-label={name}
+      data-path={path}
     >
       {/* Remounted when the status word changes, which replays its one-off glow. */}
       {summary && <span key={summary.label} className="card-pulse" />}
@@ -58,7 +81,7 @@ export function RepoCard(props: Props) {
       <span className="corner br" />
 
       {/* The header is the drag handle, so buttons and inputs elsewhere on the card keep working. */}
-      <header className="card-head" ref={setActivatorNodeRef} {...attributes} {...listeners} title="Drag to reorder">
+      <header className="card-head" ref={handleRef} {...handleProps} title="Drag to reorder or into another section">
         <div className="card-title">
           <h2 className="card-name">{name}</h2>
           <div className="card-path" title={path}>

@@ -10,6 +10,7 @@ import {
   type Operation,
   type RepoDetails,
   type RepoMeta,
+  type SectionEdit,
   type Settings,
   type Snapshot,
   type Summary,
@@ -135,6 +136,38 @@ function expectString(value: unknown, name: string): string {
   return value
 }
 
+function expectStrings(value: unknown, name: string): string[] {
+  if (!Array.isArray(value) || !value.every((item) => typeof item === 'string')) {
+    throw new Error(`${name} must be a string array`)
+  }
+  return value
+}
+
+function sectionEdit(value: unknown): SectionEdit {
+  const edit = (value ?? {}) as Record<string, unknown>
+  switch (edit.kind) {
+    case 'create':
+      return {
+        kind: 'create',
+        name: expectString(edit.name, 'name'),
+        after: edit.after === undefined ? undefined : expectString(edit.after, 'after'),
+        repos: edit.repos === undefined ? undefined : expectStrings(edit.repos, 'repos')
+      }
+    case 'rename':
+      return { kind: 'rename', id: expectString(edit.id, 'id'), name: expectString(edit.name, 'name') }
+    case 'move':
+      return { kind: 'move', id: expectString(edit.id, 'id'), by: edit.by === -1 ? -1 : 1 }
+    case 'delete':
+      return { kind: 'delete', id: expectString(edit.id, 'id') }
+    case 'collapse':
+      return { kind: 'collapse', id: expectString(edit.id, 'id'), collapsed: edit.collapsed === true }
+    case 'dismiss':
+      return { kind: 'dismiss', id: expectString(edit.id, 'id'), paths: expectStrings(edit.paths, 'paths') }
+    default:
+      throw new Error('Unknown section edit')
+  }
+}
+
 function registerIpc(): void {
   ipcMain.handle('snapshot:get', () => state.snapshot())
 
@@ -182,11 +215,13 @@ function registerIpc(): void {
     return state.snapshot()
   })
 
-  ipcMain.handle('repo:set-order', (_event, paths: unknown) => {
-    if (!Array.isArray(paths) || !paths.every((p) => typeof p === 'string')) {
-      throw new Error('paths must be a string array')
-    }
-    state.setOrder(paths)
+  ipcMain.handle('repo:place', (_event, path: unknown, section: unknown, order: unknown) => {
+    state.placeRepo(expectString(path, 'path'), expectString(section, 'section'), expectStrings(order, 'order'))
+    return state.snapshot()
+  })
+
+  ipcMain.handle('section:edit', (_event, edit: unknown) => {
+    state.editSections(sectionEdit(edit))
     return state.snapshot()
   })
 
