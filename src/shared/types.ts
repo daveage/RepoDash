@@ -37,6 +37,11 @@ export interface Source {
   path: string
   /** Folder sources only: how many directory levels below `path` are searched. */
   depth?: number
+  /**
+   * Single repositories added by `--open` (e.g. a coding agent's scratch clone): removed once their folder is
+   * deleted. Repositories in the system's temp folder are treated so too.
+   */
+  temporary?: boolean
 }
 
 export interface RepoMeta {

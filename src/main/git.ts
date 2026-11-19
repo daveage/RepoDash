@@ -1,5 +1,5 @@
 import { execFile, spawn, type ChildProcess } from 'node:child_process'
-import { existsSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { basename, join, resolve as resolvePath } from 'node:path'
 import type { FileChange, LastCommit, RepoOperation, RepoResult, RepoStatus } from '../shared/types'
 
@@ -155,6 +155,24 @@ export async function readChanges(path: string): Promise<FileChange[]> {
 export function canonicalPath(path: string): string {
   const resolved = resolvePath(path)
   return process.platform === 'win32' ? resolved.charAt(0).toUpperCase() + resolved.slice(1) : resolved
+}
+
+/**
+ * Whether `path` still holds a repository, without starting git there: on Windows a git process's working
+ * directory cannot be deleted, so a repository being deleted must not get one. A deletion removes `.git/HEAD`
+ * early; a worktree's `.git` is a file.
+ */
+export function stillRepository(path: string): boolean {
+  const dotGit = join(path, '.git')
+  return existsSync(join(dotGit, 'HEAD')) || isFile(dotGit)
+}
+
+function isFile(path: string): boolean {
+  try {
+    return statSync(path).isFile()
+  } catch {
+    return false
+  }
 }
 
 /** Returns the top-level directory of the repository containing `dir`. */

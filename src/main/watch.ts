@@ -1,6 +1,6 @@
 import { watch, type FSWatcher } from 'node:fs'
 import { join } from 'node:path'
-import { readGitDirs } from './git'
+import { readGitDirs, stillRepository } from './git'
 
 /** At most one change notification per repository in this interval. */
 const THROTTLE_MS = 800
@@ -12,6 +12,8 @@ const WATCH_WORKTREE = process.platform === 'win32' || process.platform === 'dar
 interface Watched {
   closed: boolean
   watchers: FSWatcher[]
+  /** The repository is being deleted, so its watchers are closed (see `release`). */
+  released?: boolean
 }
 
 /** Watches repositories and reports which one changed: HEAD, index, refs and the working tree. */
@@ -24,7 +26,8 @@ export class RepoWatcher {
   sync(paths: string[]): void {
     const wanted = new Set(paths)
     for (const [path, watched] of this.repos) {
-      if (wanted.has(path)) continue
+      // A released repository is watched again once it is back (cloned anew).
+      if (wanted.has(path) && !(watched.released && stillRepository(path))) continue
       watched.closed = true
       watched.watchers.forEach((watcher) => watcher.close())
       this.repos.delete(path)
@@ -53,9 +56,13 @@ export class RepoWatcher {
     const add = (target: string, recursive: boolean, accept: (file: string) => boolean) => {
       try {
         const watcher = watch(target, { recursive, persistent: false }, (_event, file) => {
+          if (!stillRepository(path)) return this.release(path, watched)
           if (file && accept(file)) this.bump(path)
         })
-        watcher.on('error', () => watcher.close())
+        watcher.on('error', () => {
+          watcher.close()
+          if (!stillRepository(path)) this.release(path, watched)
+        })
         watched.watchers.push(watcher)
       } catch {
         // The directory vanished or cannot be watched; status still refreshes on focus.
@@ -68,6 +75,20 @@ export class RepoWatcher {
     // A worktree keeps packed-refs and the stash in the main repository's git directory.
     if (dirs.commonDir !== dirs.gitDir) add(dirs.commonDir, false, (file) => !file.endsWith('.lock'))
     if (WATCH_WORKTREE) add(path, true, isWorktreeFile)
+  }
+
+  /**
+   * The repository is being deleted. Every deleted file is an event, every event a status refresh, and on
+   * Windows the git process each refresh starts there keeps the folder from being removed — a deletion would
+   * fail again and again. Close the watchers; the status refresh then finds the repository gone without
+   * starting git (`stillRepository`).
+   */
+  private release(path: string, watched: Watched): void {
+    if (watched.released) return
+    watched.released = true
+    watched.watchers.forEach((watcher) => watcher.close())
+    watched.watchers = []
+    this.bump(path)
   }
 
   private bump(path: string): void {

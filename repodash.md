@@ -220,7 +220,8 @@ icon. Builds before this ran as `repodash`; their Linux settings in `~/.config/r
 
 In this Dropbox folder Windows sometimes briefly locks freshly written folders (virus scan / indexing):
 `npm run dist` may fail with `EBUSY`/`EPERM` while renaming `dist\win-unpacked.tmp`, and Vite may print
-`EBUSY` while optimizing dependencies. Both are transient — run the command again.
+`EBUSY` while optimizing dependencies. Both are transient — run the command again, or build the installer
+outside Dropbox: `npx electron-builder --win -c.directories.output=%TEMP%\repodash-dist` after `npm run build`.
 
 Command-line arguments that are directories inside a git repository are added on start, e.g.
 `npm run dev -- C:\src\repo-a C:\src\repo-b`. `--open <dir>` (or `--open=<dir>`) with an optional
@@ -229,6 +230,15 @@ scanned repository is not added a second time, and adds the repository only when
 start hands its arguments to the running RepoDash as the single-instance lock's additional data, because the
 `argv` of `second-instance` comes reordered and with `--open <dir>` split apart. Commands reach the renderer once
 it says `ui:ready`; the renderer keeps an `open` until the snapshot lists the repository.
+
+Deleted repositories (`State.forgetMissing`, called before every status read): when a repository's folder or
+its `.git/HEAD` is gone but its drive is there (an offline network drive forgets nothing), a folder scan drops
+it at once, and a single repository added by `--open` (`temporary`) or lying in the system temp folder is
+removed with its settings — its default section goes with it when it was the last one. Other single
+repositories stay with "Folder not found". The status read then never starts git there: on Windows a running
+process's working directory cannot be deleted, and the watcher sees a deletion as a stream of changes, each a
+refresh, so a `Remove-Item` or `git worktree remove` would fail while RepoDash watches. For the same reason the
+watcher closes its handles on a repository as soon as its `.git/HEAD` disappears.
 
 `node_modules/`, `out/` and `dist/` carry the `com.dropbox.ignored` stream so Dropbox does not sync them.
 A process spawned by VS Code inherits `ELECTRON_RUN_AS_NODE=1`, which makes Electron run as plain Node —

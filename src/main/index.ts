@@ -12,6 +12,7 @@ import {
   type PanelTab,
   type RepoDetails,
   type RepoMeta,
+  type RepoResult,
   type SectionEdit,
   type Settings,
   type Snapshot,
@@ -171,7 +172,7 @@ async function openFromCommandLine({ open }: CommandLine): Promise<void> {
   const same = (a: string, b: string) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b)
   let path = state.snapshot().repos.find((repo) => same(repo.path, root))?.path
   if (!path) {
-    state.addRepo(root)
+    state.addRepo(root, true)
     path = root
   }
   command({ kind: 'open', path, tab: open.tab })
@@ -224,7 +225,12 @@ function sectionEdit(value: unknown): SectionEdit {
 function registerIpc(): void {
   ipcMain.handle('snapshot:get', () => state.snapshot())
 
-  ipcMain.handle('repo:status', (_event, path: unknown) => readRepoStatus(expectString(path, 'path')))
+  ipcMain.handle('repo:status', (_event, path: unknown): Promise<RepoResult> | RepoResult => {
+    const repo = expectString(path, 'path')
+    // git cannot even start in a deleted folder ("spawn git ENOENT"); say what happened instead.
+    const missing = state.forgetMissing(repo)
+    return missing ? { ok: false, path: repo, error: missing } : readRepoStatus(repo)
+  })
 
   ipcMain.handle('source:add-repo', async (event): Promise<AddResult> => {
     const dir = await pickDirectory(event, 'Add repository')

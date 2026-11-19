@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { basename, dirname } from 'node:path'
+import { existsSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { basename, dirname, parse, sep } from 'node:path'
 import type {
   RepoEntry,
   RepoMeta,
@@ -11,7 +13,7 @@ import type {
   Source
 } from '../shared/types'
 import { loadConfig, saveConfig, type Config, type SectionConfig } from './config'
-import { canonicalPath } from './git'
+import { canonicalPath, stillRepository } from './git'
 import { DEFAULT_SCAN_DEPTH, scanFolder } from './scan'
 
 const CUSTOM = 'custom:'
@@ -24,6 +26,13 @@ function folderName(path: string): string {
 
 function sectionName(name: string): string {
   return name.trim().slice(0, MAX_SECTION_NAME)
+}
+
+/** Added by `--open`, or in the system's temp folder (also ones added before sources were marked). */
+function isTemporary(source: Source): boolean {
+  if (source.temporary) return true
+  const fold = (path: string) => (process.platform === 'win32' ? path.toLowerCase() : path)
+  return fold(source.path).startsWith(fold(canonicalPath(tmpdir())) + sep)
 }
 
 /** Owns the user's sources and settings; every change is saved and announced through `onChange`. */
@@ -98,13 +107,41 @@ export class State {
       .sort((a, b) => a.path.localeCompare(b.path))
   }
 
-  addRepo(path: string): void {
+  /** `temporary`: added by `--open`, so it goes once its folder is deleted (see `forgetMissing`). */
+  addRepo(path: string, temporary = false): void {
     const canonical = canonicalPath(path)
     this.config.hidden = this.config.hidden.filter((p) => p !== canonical)
     if (!this.config.sources.some((s) => s.kind === 'repo' && s.path === canonical)) {
-      this.config.sources.push({ id: randomUUID(), kind: 'repo', path: canonical })
+      this.config.sources.push({ id: randomUUID(), kind: 'repo', path: canonical, ...(temporary && { temporary }) })
     }
     this.commit()
+  }
+
+  /**
+   * A repository whose folder (or its `.git`) is gone while its drive is still there: a folder scan forgets it at
+   * once (as its next scan would), a temporary single repository is removed with its settings. One the user
+   * added stays and shows why, so it can be removed by hand. Returns that reason, or null for a repository.
+   */
+  forgetMissing(path: string): string | null {
+    // A drive that is offline is no reason to forget anything.
+    if (stillRepository(path) || !existsSync(parse(path).root)) return null
+    const reason = existsSync(path) ? 'Not a git repository any more' : 'Folder not found'
+    let changed = false
+    for (const [id, paths] of this.scanned) {
+      if (!paths.includes(path)) continue
+      this.scanned.set(id, paths.filter((p) => p !== path))
+      changed = true
+    }
+    const gone = this.config.sources.filter((s) => s.kind === 'repo' && s.path === path && isTemporary(s))
+    if (gone.length > 0) {
+      this.config.sources = this.config.sources.filter((s) => !gone.includes(s))
+      delete this.config.meta[path]
+      this.config.order = this.config.order.filter((p) => p !== path)
+      this.commit()
+    } else if (changed) {
+      this.onChange(this.snapshot())
+    }
+    return reason
   }
 
   addFolder(path: string): void {
