@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type ReactNode } from 'react'
-import type {
-  BranchInfo,
-  History,
-  HistoryCommit,
-  HistoryScope,
-  Operation,
-  RepoDetails,
-  RepoStatus
+import {
+  PANEL_TABS,
+  type BranchInfo,
+  type History,
+  type HistoryCommit,
+  type HistoryScope,
+  type Operation,
+  type PanelTab,
+  type RepoDetails,
+  type RepoStatus
 } from '../../shared/types'
 import { BranchesView } from './BranchesView'
 import { ChangesView, type DiscardKind } from './ChangesView'
@@ -19,8 +21,8 @@ import type { ConsoleEntry } from './operations'
 import { PanelResize, usePanelWidth } from './PanelResize'
 import { RepoActions } from './RepoActions'
 
-export type DetailTab = 'history' | 'changes' | 'branches' | 'console'
-const TABS: DetailTab[] = ['history', 'changes', 'branches', 'console']
+export type DetailTab = PanelTab
+const TABS: readonly DetailTab[] = PANEL_TABS
 
 interface Props {
   path: string

@@ -81,6 +81,11 @@ npm run dev
 Directories passed on the command line are added as repositories: `RepoDash ~/src/api ~/src/web`
 (or `npm run dev -- ~/src/api` while developing).
 
+`RepoDash --open <dir>` shows the panel of the repository that holds `<dir>`, on Changes or on the tab given
+with `--tab=history|changes|branches|console`; a repository the dashboard does not list yet is added. A running
+RepoDash takes the request and comes to the front, so a script, an editor task or a coding agent can show you the
+repository it has just changed.
+
 ### Keyboard
 
 | Keys | Action |

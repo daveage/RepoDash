@@ -58,10 +58,26 @@ export function App() {
   const newsTimer = useRef<number | null>(null)
   const bulkRunning = useRef(false)
 
-  const applySnapshot = useCallback((next: Snapshot) => {
-    snapshotRef.current = next
-    setSnapshot(next)
+  /** A repository to show (tray, notification, `--open`) that the dashboard may not list yet. */
+  const pendingOpen = useRef<{ path: string; tab?: DetailTab } | null>(null)
+  const openPending = useCallback(() => {
+    const pending = pendingOpen.current
+    if (!pending || !snapshotRef.current?.repos.some((repo) => repo.path === pending.path)) return
+    pendingOpen.current = null
+    setShowSettings(false)
+    setConfiguring(null)
+    setShowHelp(false)
+    setDetail({ path: pending.path, tab: pending.tab ?? 'history' })
   }, [])
+
+  const applySnapshot = useCallback(
+    (next: Snapshot) => {
+      snapshotRef.current = next
+      setSnapshot(next)
+      openPending()
+    },
+    [openPending]
+  )
 
   const apply = useCallback((update: Promise<Snapshot>) => void update.then(applySnapshot), [applySnapshot])
 
@@ -249,13 +265,14 @@ export function App() {
   onCommand.current = (command) => {
     if (command.kind === 'fetch-all') return void fetchAll()
     if (command.kind === 'pull-clean') return void pullClean()
-    if (snapshotRef.current?.repos.some((repo) => repo.path === command.path)) {
-      setShowSettings(false)
-      setConfiguring(null)
-      setDetail({ path: command.path, tab: 'history' })
-    }
+    pendingOpen.current = { path: command.path, tab: command.tab }
+    openPending()
   }
-  useEffect(() => api.onCommand((command) => onCommand.current(command)), [])
+  useEffect(() => {
+    const off = api.onCommand((command) => onCommand.current(command))
+    api.ready()
+    return off
+  }, [])
 
   // Success notices step aside on their own; warnings wait to be read.
   useEffect(() => {

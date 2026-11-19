@@ -4,10 +4,12 @@ import { join, resolve } from 'node:path'
 import icon from '../../resources/icon.png?asset'
 import {
   AUTO_FETCH_CHOICES,
+  PANEL_TABS,
   type AddResult,
   type DiffTarget,
   type Notice,
   type Operation,
+  type PanelTab,
   type RepoDetails,
   type RepoMeta,
   type SectionEdit,
@@ -56,10 +58,15 @@ function showWindow(): void {
   win.focus()
 }
 
+/** Commands wait here until the renderer listens (`ui:ready`), e.g. an `--open` given when RepoDash starts. */
+let rendererReady = false
+const queued: UiCommand[] = []
+
 /** Fetch all / pull clean from the tray run where the window is; opening a repository brings it up. */
 function command(command: UiCommand): void {
   if (command.kind === 'open') showWindow()
-  broadcast('ui:command', command)
+  if (rendererReady) broadcast('ui:command', command)
+  else queued.push(command)
 }
 
 function notify({ title, body, path }: Notice): void {
@@ -88,6 +95,8 @@ function createWindow(): void {
     }
   })
   win.once('ready-to-show', () => win.show())
+  // A (re)loading page listens again only once it says `ui:ready`.
+  win.webContents.on('did-start-loading', () => (rendererReady = false))
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
   // Closing keeps RepoDash in the tray, so auto fetch, notifications and the badge go on.
   win.on('close', (event) => {
@@ -114,14 +123,58 @@ function isDirectory(path: string): boolean {
   }
 }
 
-/** Directories passed on the command line, e.g. `repodash C:\src\repo-a C:\src\repo-b`, become sources. */
-async function addCommandLineRepositories(argv: string[], cwd: string): Promise<void> {
+interface CommandLine {
+  /** Plain directories, e.g. `repodash C:\src\repo-a C:\src\repo-b`: added to the dashboard. */
+  dirs: string[]
+  /** `--open <dir>` or `--open=<dir>`, optionally with `--tab=<tab>` (default changes): shown in the panel. */
+  open: { dir: string; tab: PanelTab } | null
+}
+
+function parseCommandLine(argv: string[], cwd: string): CommandLine {
   const args = argv.slice(app.isPackaged ? 1 : 2)
-  const dirs = args.filter((arg) => !arg.startsWith('-') && arg !== '.').map((arg) => resolve(cwd, arg))
+  const dirs: string[] = []
+  let open: string | null = null
+  let tab: PanelTab = 'changes'
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    if (arg === '--open' && i + 1 < args.length) open = args[++i]
+    else if (arg.startsWith('--open=')) open = arg.slice('--open='.length)
+    else if (arg.startsWith('--tab=')) {
+      const value = arg.slice('--tab='.length)
+      if ((PANEL_TABS as readonly string[]).includes(value)) tab = value as PanelTab
+    } else if (!arg.startsWith('-') && arg !== '.') dirs.push(resolve(cwd, arg))
+  }
+  return { dirs, open: open ? { dir: resolve(cwd, open), tab } : null }
+}
+
+async function addCommandLineRepositories({ dirs }: CommandLine): Promise<void> {
   for (const dir of dirs.filter(isDirectory)) {
     const root = await resolveRepoRoot(dir).catch(() => null)
     if (root) state.addRepo(root)
   }
+}
+
+/** Resolves when the folder scans RepoDash started with are done. */
+let initialScan: Promise<void> = Promise.resolve()
+
+/** `--open`: the repository holding the directory, added first if the dashboard does not show it yet. */
+async function openFromCommandLine({ open }: CommandLine): Promise<void> {
+  if (!open) return
+  const root = isDirectory(open.dir) ? await resolveRepoRoot(open.dir).catch(() => null) : null
+  if (!root) {
+    showWindow()
+    notify({ title: 'RepoDash', body: `Not a git repository: ${open.dir}` })
+    return
+  }
+  // A repository a folder scan finds must not also become a source of its own.
+  await initialScan
+  const same = (a: string, b: string) => (process.platform === 'win32' ? a.toLowerCase() === b.toLowerCase() : a === b)
+  let path = state.snapshot().repos.find((repo) => same(repo.path, root))?.path
+  if (!path) {
+    state.addRepo(root)
+    path = root
+  }
+  command({ kind: 'open', path, tab: open.tab })
 }
 
 async function pickDirectory(event: IpcMainInvokeEvent, title: string): Promise<string | null> {
@@ -259,6 +312,11 @@ function registerIpc(): void {
     tray?.update({ dirty: count(dirty), outOfSync: count(outOfSync), pullable: count(pullable) })
   })
 
+  ipcMain.on('ui:ready', () => {
+    rendererReady = true
+    for (const each of queued.splice(0)) broadcast('ui:command', each)
+  })
+
   ipcMain.on('ui:notify', (_event, notice: unknown) => {
     const { title, body, path } = (notice ?? {}) as Notice
     if (typeof title !== 'string' || typeof body !== 'string') return
@@ -294,24 +352,38 @@ function registerIpc(): void {
 // Windows shows notifications under this id; the installer's Start menu shortcut carries the same one.
 app.setAppUserModelId('com.repodash.app')
 
+/** What a second start hands to the running RepoDash: its own arguments, unchanged. */
+interface SecondStart {
+  argv: string[]
+  cwd: string
+}
+
 // One RepoDash at a time: starting it again (e.g. from the taskbar while it sits in the tray) brings up
-// the running one, and directories given to the second start are added there.
-if (!app.requestSingleInstanceLock()) {
+// the running one, and the second start's directories and `--open` are handled there. Its arguments travel
+// as additional data: the `argv` of the event is reordered by Chromium, which also splits `--open <dir>`.
+if (!app.requestSingleInstanceLock({ argv: process.argv, cwd: process.cwd() } satisfies SecondStart)) {
   app.quit()
 } else {
-  app.on('second-instance', (_event, argv, cwd) => {
+  app.on('second-instance', (_event, argv, cwd, data) => {
     showWindow()
-    if (state) void addCommandLineRepositories(argv, cwd)
+    if (!state) return
+    const start = data as Partial<SecondStart> | null
+    const sent = Array.isArray(start?.argv) && typeof start.cwd === 'string'
+    const commandLine = parseCommandLine(sent ? start.argv! : argv, sent ? start.cwd! : cwd)
+    void addCommandLineRepositories(commandLine)
+    void openFromCommandLine(commandLine)
   })
 
   app.whenReady().then(async () => {
     state = new State(publish)
     registerIpc()
-    await addCommandLineRepositories(process.argv, process.cwd())
+    const commandLine = parseCommandLine(process.argv, process.cwd())
+    await addCommandLineRepositories(commandLine)
     createWindow()
     tray = new StatusTray(showWindow, command)
     publish(state.snapshot())
-    void state.rescan()
+    initialScan = state.rescan().catch(() => {})
+    void openFromCommandLine(commandLine)
     // macOS: clicking the dock icon brings back the hidden window.
     app.on('activate', showWindow)
   })

@@ -223,7 +223,12 @@ In this Dropbox folder Windows sometimes briefly locks freshly written folders (
 `EBUSY` while optimizing dependencies. Both are transient — run the command again.
 
 Command-line arguments that are directories inside a git repository are added on start, e.g.
-`npm run dev -- C:\src\repo-a C:\src\repo-b`.
+`npm run dev -- C:\src\repo-a C:\src\repo-b`. `--open <dir>` (or `--open=<dir>`) with an optional
+`--tab=<tab>` shows that repository's panel, Changes by default: it waits for the first folder scans, so a
+scanned repository is not added a second time, and adds the repository only when no source lists it. A second
+start hands its arguments to the running RepoDash as the single-instance lock's additional data, because the
+`argv` of `second-instance` comes reordered and with `--open <dir>` split apart. Commands reach the renderer once
+it says `ui:ready`; the renderer keeps an `open` until the snapshot lists the repository.
 
 `node_modules/`, `out/` and `dist/` carry the `com.dropbox.ignored` stream so Dropbox does not sync them.
 A process spawned by VS Code inherits `ELECTRON_RUN_AS_NODE=1`, which makes Electron run as plain Node —

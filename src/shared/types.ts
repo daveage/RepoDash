@@ -250,7 +250,11 @@ export interface Notice {
 }
 
 /** Requests from the tray menu and notifications, carried out by the renderer like its own buttons. */
-export type UiCommand = { kind: 'fetch-all' } | { kind: 'pull-clean' } | { kind: 'open'; path: string }
+export const PANEL_TABS = ['history', 'changes', 'branches', 'console'] as const
+export type PanelTab = (typeof PANEL_TABS)[number]
+
+/** From the tray, a notification or the command line (`--open`); `open` shows the repository's panel. */
+export type UiCommand = { kind: 'fetch-all' } | { kind: 'pull-clean' } | { kind: 'open'; path: string; tab?: PanelTab }
 
 /** API the preload script exposes to the renderer as `window.repodash`. */
 export interface RepoDashApi {
@@ -284,4 +288,6 @@ export interface RepoDashApi {
   setSummary(summary: Summary): void
   notify(notice: Notice): void
   onCommand(listener: (command: UiCommand) => void): () => void
+  /** The renderer listens for commands now; ones that came earlier (a start with `--open`) follow. */
+  ready(): void
 }

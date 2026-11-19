@@ -35,7 +35,8 @@ const api: RepoDashApi = {
 
   setSummary: (summary) => ipcRenderer.send('ui:summary', summary),
   notify: (notice) => ipcRenderer.send('ui:notify', notice),
-  onCommand: (listener) => subscribe('ui:command', listener)
+  onCommand: (listener) => subscribe('ui:command', listener),
+  ready: () => ipcRenderer.send('ui:ready')
 }
 
 contextBridge.exposeInMainWorld('repodash', api)
